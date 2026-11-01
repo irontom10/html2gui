@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>html2gui SDL3 smoke test</title>
+  <style>
+    body { background-color: #f1f5f9; color: #17243a; }
+    h1 { color: #e2e8f0; }
+    .hero { background-color: #0f172a; padding: 28px; }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <h1>html2gui</h1>
+      <p class="hero-copy">WHATWG HTML + Lexbor CSS selectors + SDL3</p>
+    </header>
+    <section class="panel">
+      <h2>Our first native C89 GUI frame</h2>
+      <p>The document is parsed with Lexbor. Styles are matched by CSS selectors.
+      Text and boxes are laid out into a retained display list and drawn by SDL3.</p>
+      <div class="actions">
+        <button id="hello">Click me</button>
+        <button id="second">Another button</button>
+      </div>
+      <p class="hint">Try resizing the window, scrolling, and clicking the buttons.
+      Button actions currently print their IDs to stdout.</p>
+    </section>
+    <section class="panel">
+      <h2>Next: real CSS layout</h2>
+      <p>This initial slice handles basic blocks, equal-width flex rows,
+      color, spacing, text, and dimensions. Grid, inline formatting,
+      backgrounds beyond solid colors and most modern CSS are not implemented.</p>
+    </section>
+  </main>
+</body>
+</html>
