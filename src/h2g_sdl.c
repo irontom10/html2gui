@@ -8,8 +8,8 @@
  * -> cached SDL textures -> SDL3 window and events.
  */
 #include "html2gui/parser.h"
+#include "html2gui/renderer.h"
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_main.h>
 #include <SDL3_ttf/SDL_ttf.h>
 #include <ctype.h>
 #include <stdio.h>
@@ -66,6 +66,8 @@ typedef struct H2GApp {
     int op_count, overflow, viewport_w, viewport_h;
     int dark_backgrounds;
     float document_h, scroll, first_h1_y;
+    H2GButtonCallback on_button;
+    void *button_user;
 } H2GApp;
 typedef struct H2GMatchApply {
     H2GStyle *style;
@@ -783,9 +785,13 @@ static void click(H2GApp *app, float x, float y)
         if (op->type==3 &&
             x>=op->rect.x && x<op->rect.x+op->rect.w &&
             y>=op->rect.y && y<op->rect.y+op->rect.h) {
-            printf("html2gui: button clicked id=%s\n",
-                   op->id[0]?op->id:"(unnamed)");
-            fflush(stdout);
+            if (app->on_button != NULL) {
+                app->on_button(op->id, app->button_user);
+            } else {
+                printf("html2gui: button clicked id=%s\n",
+                       op->id[0] ? op->id : "(unnamed)");
+                fflush(stdout);
+            }
             return;
         }
     }
@@ -826,30 +832,22 @@ static void scan_styles(H2GApp *app, const H2GDomNode *node, int depth)
         scan_styles(app,child,depth+1);
 }
 
-int main(int argc, char **argv)
+int h2g_renderer_run(const char *html_path, const char *css_path,
+                     int headless, H2GButtonCallback on_button, void *user)
 {
     H2GApp app;
     SDL_Event ev;
     char *html_data,*css_data;
     size_t length;
-    const char *html_path,*css_path=NULL;
-    int headless=0,again=1,i;
+    int again=1,i;
     float high;
     memset(&app,0,sizeof(app));
-    if (argc<2) {
-        fprintf(stderr,"usage: %s [--headless] page.html [style.css]\n",
-                argv[0]);
+    app.on_button=on_button;
+    app.button_user=user;
+    if (html_path==NULL) {
+        fprintf(stderr,"html2gui: HTML path is required\n");
         return 2;
     }
-    i=1;
-    if (strcmp(argv[i],"--headless")==0) { headless=1; i++; }
-    if (argc-i<1 || argc-i>2) {
-        fprintf(stderr,"usage: %s [--headless] page.html [style.css]\n",
-                argv[0]);
-        return 2;
-    }
-    html_path=argv[i++];
-    if (i<argc) css_path=argv[i];
 
     html_data=read_file(html_path,&length);
     if (!html_data) { fprintf(stderr,"cannot read %s\n",html_path); return 1; }
@@ -905,6 +903,20 @@ int main(int argc, char **argv)
             return 1;
         }
         fprintf(stderr,"html2gui: TORTURE VERIFY PASS\n");
+    }
+    /* Opt-in synthetic hit-test for the CI callback smoke test only.
+     * Never inject clicks in a normal interactive application.
+     */
+    if (headless && getenv("H2G_TEST_CLICK") != NULL) {
+        const char *target = getenv("H2G_TEST_CLICK");
+        for (i=0;i<app.op_count;i++) {
+            H2GOp *op=&app.ops[i];
+            if (op->type==3 && strcmp(op->id,target)==0) {
+                click(&app,op->rect.x+op->rect.w*0.5f,
+                           op->rect.y+op->rect.h*0.5f-app.scroll);
+                break;
+            }
+        }
     }
     if (!headless) while (again && SDL_WaitEvent(&ev)) {
         if (ev.type==SDL_EVENT_QUIT) again=0;
