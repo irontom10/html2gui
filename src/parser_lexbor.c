@@ -11,6 +11,7 @@
 #include "html2gui/parser.h"
 
 #include <stdlib.h>
+#include <ctype.h>
 #include <lexbor/html/html.h>
 #include <lexbor/dom/interfaces/element.h>
 #include <lexbor/css/css.h>
@@ -23,6 +24,7 @@ struct h2g_html_document {
 };
 
 #define H2G_CSS_HASH_BUCKETS 8192
+#define H2G_CSS_MAX_MEDIA_DEPTH 16
 
 typedef struct H2GIndexedRule {
     const lxb_css_rule_style_t *rule;
@@ -30,6 +32,8 @@ typedef struct H2GIndexedRule {
     size_t anchor_length;
     unsigned long sequence;
     int next;
+    const lxb_css_rule_at_t *media[H2G_CSS_MAX_MEDIA_DEPTH];
+    unsigned int media_count;
 } H2GIndexedRule;
 
 struct h2g_css_stylesheet {
@@ -145,9 +149,8 @@ size_t h2g_html_body_node_count(const H2GHtmlDocument *document)
 }
 
 
-/* Traverse only unconditional @layer wrappers. @media, @supports,
- * @container and other conditional/group rules need explicit evaluation
- * before their children can contribute to computed style.
+/* Keep @layer wrappers unconditional. @media wrappers require viewport
+ * evaluation at match time; @supports and @container remain unsupported.
  */
 static const lxb_css_rule_list_t *h2g_layer_children(
                                                  const lxb_css_rule_t *rule)
@@ -164,6 +167,26 @@ static const lxb_css_rule_list_t *h2g_layer_children(
     return NULL;
 }
 
+/* Discover only recognized viewport media groups. This deliberately does
+ * not recurse through @supports, @container or arbitrary at-rules.
+ */
+static const lxb_css_rule_list_t *h2g_media_children(
+                                                 const lxb_css_rule_t *rule)
+{
+    const lxb_css_rule_at_t *at;
+    const lxb_css_at_rule__custom_t *custom;
+    if (rule->type != LXB_CSS_RULE_AT_RULE) return NULL;
+    at = lxb_css_rule_at(rule);
+    if (at->type == LXB_CSS_AT_RULE_MEDIA)
+        return at->u.media != NULL ? at->u.media->block : NULL;
+    if (at->type != LXB_CSS_AT_RULE__CUSTOM) return NULL;
+    custom = at->u.custom;
+    if (custom != NULL && custom->name.length == 5 &&
+        memcmp(custom->name.data, "media", 5) == 0)
+        return custom->block;
+    return NULL;
+}
+
 static size_t h2g_css_count_styles(const lxb_css_rule_t *rule, int depth)
 {
     const lxb_css_rule_list_t *children;
@@ -173,6 +196,7 @@ static size_t h2g_css_count_styles(const lxb_css_rule_t *rule, int depth)
         if (rule->type == LXB_CSS_RULE_STYLE)
             count++;
         children = h2g_layer_children(rule);
+        if (children == NULL) children = h2g_media_children(rule);
         if (children != NULL)
             count += h2g_css_count_styles(children->first, depth + 1);
         rule = rule->next;
@@ -216,11 +240,14 @@ static void h2g_css_rule_anchor(H2GIndexedRule *entry)
 }
 
 static int h2g_css_collect_styles(H2GCssStylesheet *sheet,
-                    const lxb_css_rule_t *rule, int depth)
+                    const lxb_css_rule_t *rule, int depth,
+                    const lxb_css_rule_at_t **media_stack,
+                    unsigned int media_count)
 {
     const lxb_css_rule_list_t *children;
     H2GIndexedRule *entry;
     unsigned long bucket;
+    unsigned int i;
     int index;
     if (depth >= 32) return 1;
     while (rule != NULL) {
@@ -232,6 +259,9 @@ static int h2g_css_collect_styles(H2GCssStylesheet *sheet,
             entry->rule = lxb_css_rule_style(rule);
             entry->sequence = (unsigned long)index;
             entry->next = -1;
+            entry->media_count = media_count;
+            for (i = 0; i < media_count; i++)
+                entry->media[i] = media_stack[i];
             h2g_css_rule_anchor(entry);
             if (entry->anchor != NULL) {
                 bucket = h2g_class_hash((const char *)entry->anchor,
@@ -244,9 +274,21 @@ static int h2g_css_collect_styles(H2GCssStylesheet *sheet,
             }
         }
         children = h2g_layer_children(rule);
-        if (children != NULL &&
-            !h2g_css_collect_styles(sheet, children->first, depth + 1))
-            return 0;
+        if (children != NULL) {
+            if (!h2g_css_collect_styles(sheet, children->first,
+                         depth + 1, media_stack, media_count))
+                return 0;
+        } else {
+            children = h2g_media_children(rule);
+            if (children != NULL) {
+                if (media_count >= H2G_CSS_MAX_MEDIA_DEPTH)
+                    return 0;
+                media_stack[media_count] = lxb_css_rule_at(rule);
+                if (!h2g_css_collect_styles(sheet, children->first,
+                         depth + 1, media_stack, media_count + 1))
+                    return 0;
+            }
+        }
         rule = rule->next;
     }
     return 1;
@@ -255,6 +297,7 @@ static int h2g_css_collect_styles(H2GCssStylesheet *sheet,
 static int h2g_css_build_index(H2GCssStylesheet *sheet)
 {
     const lxb_css_rule_list_t *root;
+    const lxb_css_rule_at_t *media_stack[H2G_CSS_MAX_MEDIA_DEPTH];
     size_t i;
     root = lxb_css_rule_list(sheet->native->root);
     if (root == NULL) return 0;
@@ -266,7 +309,7 @@ static int h2g_css_build_index(H2GCssStylesheet *sheet)
     if (sheet->styles == NULL) return 0;
     sheet->fallback = -1;
     for (i = 0; i < H2G_CSS_HASH_BUCKETS; i++) sheet->buckets[i] = -1;
-    return h2g_css_collect_styles(sheet, root->first, 0);
+    return h2g_css_collect_styles(sheet, root->first, 0, media_stack, 0);
 }
 
 H2GCssStylesheet *h2g_css_parse(const char *utf8, size_t length)
@@ -495,6 +538,7 @@ static int h2g_css_width_media(const char *query, size_t length,
     const char *src, *end, *p;
     double amount, target;
     int opchars;
+    char *number_end;
     if (query == NULL || viewport <= 0) return 0;
     if (length >= sizeof(expression)) return 0;
     memcpy(expression, query, length);
@@ -504,6 +548,30 @@ static int h2g_css_width_media(const char *query, size_t length,
     end = strchr(src, ')');
     if (p == NULL || end == NULL || end <= p) return 0;
     if (strchr(end + 1, '(') != NULL) return 0;
+    /* Restrict the supported grammar to a single width feature, optionally
+     * prefixed by "screen and" or "all and". Never let print match.
+     */
+    {
+        const char *prefix = src;
+        while (prefix < p && isspace((unsigned char)*prefix)) prefix++;
+        if (prefix != p) {
+            if (strncmp(prefix, "screen", 6) == 0) prefix += 6;
+            else if (strncmp(prefix, "all", 3) == 0) prefix += 3;
+            else return 0;
+            if (!isspace((unsigned char)*prefix)) return 0;
+            while (prefix < p && isspace((unsigned char)*prefix)) prefix++;
+            if (strncmp(prefix, "and", 3) != 0) return 0;
+            prefix += 3;
+            if (!isspace((unsigned char)*prefix)) return 0;
+            while (prefix < p && isspace((unsigned char)*prefix)) prefix++;
+            if (prefix != p) return 0;
+        }
+    }
+    {
+        const char *suffix = end + 1;
+        while (isspace((unsigned char)*suffix)) suffix++;
+        if (*suffix != '\0') return 0;
+    }
     p++;
     while (*p == ' ' || *p == '\t') p++;
     memset(property, 0, sizeof(property));
@@ -517,9 +585,9 @@ static int h2g_css_width_media(const char *query, size_t length,
         if (*p != ':') return 0;
         p++;
         while (*p == ' ' || *p == '\t') p++;
-        amount = strtod(p, (char **)&src);
-        if (src == p) return 0;
-        p = src;
+        amount = strtod(p, &number_end);
+        if (number_end == p) return 0;
+        p = number_end;
         if (strcmp(property, "min-width") == 0) strcpy(operator, ">=");
         else strcpy(operator, "<=");
     } else if (strcmp(property, "width") == 0) {
@@ -529,9 +597,9 @@ static int h2g_css_width_media(const char *query, size_t length,
         operator[opchars] = '\0';
         if (opchars == 0) return 0;
         while (*p == ' ' || *p == '\t') p++;
-        amount = strtod(p, (char **)&src);
-        if (src == p) return 0;
-        p = src;
+        amount = strtod(p, &number_end);
+        if (number_end == p) return 0;
+        p = number_end;
     } else {
         return 0;
     }
@@ -554,6 +622,30 @@ static int h2g_css_width_media(const char *query, size_t length,
     if (strcmp(operator, "<") == 0) return viewport < target;
     if (strcmp(operator, "=") == 0) return viewport == target;
     return 0;
+}
+
+static int h2g_css_media_matches(const H2GCssStylesheet *sheet,
+                                 const lxb_css_rule_at_t *at,
+                                 float viewport)
+{
+    const char *query = NULL;
+    size_t length = 0;
+    const lxb_css_at_rule__custom_t *custom;
+    if (at->type == LXB_CSS_AT_RULE_MEDIA) {
+        if (at->prelude_end > at->prelude_begin &&
+            at->prelude_end <= sheet->source_length) {
+            query = sheet->source + at->prelude_begin;
+            length = at->prelude_end - at->prelude_begin;
+        }
+    } else if (at->type == LXB_CSS_AT_RULE__CUSTOM) {
+        custom = at->u.custom;
+        if (custom != NULL && custom->name.length == 5 &&
+            memcmp(custom->name.data, "media", 5) == 0) {
+            query = (const char *)custom->prelude.data;
+            length = custom->prelude.length;
+        }
+    }
+    return h2g_css_width_media(query, length, viewport);
 }
 
 static void h2g_css_emit_nested(const H2GCssStylesheet *sheet,
@@ -611,7 +703,11 @@ static int h2g_css_match_indexed(const H2GCssStylesheet *stylesheet,
     H2GMatchResult match;
     lxb_status_t status;
     unsigned long index = 0;
+    unsigned int i;
 
+    for (i = 0; i < entry->media_count; i++)
+        if (!h2g_css_media_matches(stylesheet, entry->media[i], viewport))
+            return 1;
     if (style->selector == NULL) return 1;
     match.found = 0; match.best = 0;
     status = lxb_selectors_match_node(stylesheet->matcher,

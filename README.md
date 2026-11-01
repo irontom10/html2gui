@@ -45,7 +45,7 @@ Clicking a button prints its HTML id to stdout. Escape closes the window.
 
 1. Lexbor tokenizes HTML and constructs the WHATWG DOM tree.
 2. Lexbor parses CSS per the W3C CSS Syntax specification.
-3. Lexbor matches class-indexed CSS selectors from top-level and nested `@layer` rules against DOM nodes; simple nested viewport-width `@media` declarations can be evaluated.
+3. Lexbor matches class-indexed CSS selectors from top-level and nested `@layer` rules against DOM nodes. Supported viewport-width `@media` conditions gate both style rules and media-nested declarations.
 4. The initial C89 style engine applies basic properties, root theme variables, and OKLCH colors using an incomplete cascade.
 5. The initial C89 layout engine produces a block/flex/grid approximation.
 6. SDL3 draws boxes and *cached* SDL_ttf text textures from a display list.
@@ -63,7 +63,7 @@ rows and grid tracks, `position:absolute` elements kept out of normal flow,
 clipped screen-reader-only content, buttons with hit testing, scrolling,
 resize reflow and embedded `<style>` plus an optional external CSS file.
 Theme variables and a narrow subset of `calc(var(...) * multiplier)` work.
-Selected simple viewport-width nested `@media` rules are handled.
+Selected single-width viewport `@media` rules are handled at top level, inside `@layer`, and inside style rules; unsupported media queries are ignored.
 
 **Not implemented:** complete CSS Grid/Flexbox and inline formatting
 algorithms; block margin collapsing; full normal flow and positioning;
