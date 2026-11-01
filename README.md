@@ -39,7 +39,7 @@ one frame, print paint counts and exit. Example:
     ./build/h2g-render --headless examples/basic.html examples/basic.css
 
 The window has wheel/page-up/page-down scrolling and reflows on resize.
-Clicking a button prints its HTML id to stdout. Escape closes the window.
+The CLI demo prints clicked button IDs to stdout; embedders can register a native C callback instead. Escape closes the window.
 
 ## Architecture
 
@@ -50,7 +50,36 @@ Clicking a button prints its HTML id to stdout. Escape closes the window.
 5. The initial C89 layout engine produces a block/flex/grid approximation.
 6. SDL3 draws boxes and *cached* SDL_ttf text textures from a display list.
 
-The public parser API is in include/html2gui/parser.h. The only C99
+The public parser API is in include/html2gui/parser.h. A reusable
+`build/libhtml2gui-renderer.a` also exposes `h2g_renderer_run` in
+`include/html2gui/renderer.h`. Pass a plain C function and context pointer to
+receive native button clicks by HTML `id`. The function owns the SDL event
+loop, does not execute JavaScript, and accepts an optional compiled CSS file.
+
+```c
+#include "html2gui/renderer.h"
+#include <stdio.h>
+#include <string.h>
+
+static void on_button(const char *id, void *user)
+{
+    (void)user;
+    if (strcmp(id, "hello") == 0)
+        puts("hello button invoked native C!");
+}
+
+int main(void)
+{
+    return h2g_renderer_run("examples/basic.html", "examples/basic.css",
+                            0, on_button, NULL);
+}
+```
+
+Link with `-lhtml2gui-renderer -lhtml2gui-parser` followed by Lexbor,
+SDL3, SDL3_ttf and `-lm`. Use `make native-callback-test` for the
+headless synthetic click regression test.
+
+The only C99
 translation unit is src/parser_lexbor.c, because Lexbor's headers require C99;
 all other html2gui code compiles with -std=c89 -pedantic -Werror.
 
