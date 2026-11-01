@@ -145,6 +145,7 @@ static int test_tailwind_root_variables(void)
     CHECK(root != NULL);
     count.count=0; count.background=0; count.variables=0;
     CHECK(h2g_css_visit_matching(sheet,root,count_matches,&count));
+    (void)h2g_css_visit_root_variables(sheet,count_matches,&count);
     fprintf(stderr,"root matched declarations=%d, variables=%d, indexed=%lu\\n",
             count.count,count.variables,
             (unsigned long)h2g_css_indexed_style_rule_count(sheet));
