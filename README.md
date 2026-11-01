@@ -16,10 +16,11 @@ come from Lexbor's CSS modules, based on the
 **Do not special-case Tailwind tokens in the HTML parser.** Tailwind becomes
 ordinary CSS input when compiled to a stylesheet.
 
-Lexbor's implementation is **C99**, not C89. It is compiled as an external
-dependency. The public html2gui API and all new html2gui-owned source files
-are written in strict ISO C89. If *every dependency* must also be C89, this
-approach will not satisfy that constraint.
+Lexbor itself is implemented in **C99**. Its public headers use C99 inline,
+so the isolated src/parser_lexbor.c adapter is compiled as C99, although its
+own code uses C89 syntax. **The published html2gui header and all application
+and test code compile under strict ISO C89.** The dependency is not fully C89;
+a no-C99-dependencies policy would require a different implementation.
 
 ### Build
 
