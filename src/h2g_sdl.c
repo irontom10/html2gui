@@ -15,12 +15,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #define H2G_MAX_OPS 60000
 #define H2G_MAX_FONTS 32
 #define H2G_MAX_SHEETS 16
 #define H2G_MAX_DEPTH 128
 #define H2G_MAX_TEXT 32768
+#define H2G_MAX_VARS 2048
 #define H2G_LINE 4096
 #define H2G_PROP_COUNT 16
 
@@ -33,6 +35,11 @@ typedef struct H2GStyle {
     int imp[H2G_PROP_COUNT];
     unsigned long spec[H2G_PROP_COUNT], order[H2G_PROP_COUNT];
 } H2GStyle;
+typedef struct H2GVariable {
+    char *name;
+    char *value;
+} H2GVariable;
+
 typedef struct H2GFont {
     int size, bold;
     TTF_Font *font;
@@ -53,12 +60,15 @@ typedef struct H2GApp {
     H2GFont fonts[H2G_MAX_FONTS];
     int font_count;
     const char *font_path;
+    H2GVariable *vars;
+    int var_count;
     H2GOp *ops;
     int op_count, overflow, viewport_w, viewport_h;
     float document_h, scroll;
 } H2GApp;
 typedef struct H2GMatchApply {
     H2GStyle *style;
+    H2GApp *app;
     unsigned long base;
 } H2GMatchApply;
 
@@ -115,10 +125,145 @@ static int css_value(const char *s, float *value)
     return 0;
 }
 
+
+static char *h2g_string_copy(const char *s)
+{
+    size_t length = strlen(s);
+    char *copy = (char *)malloc(length + 1);
+    if (copy != NULL) memcpy(copy, s, length + 1);
+    return copy;
+}
+
+static const char *find_var(const H2GApp *app, const char *name)
+{
+    int i;
+    for (i = app->var_count - 1; i >= 0; i--)
+        if (strcmp(app->vars[i].name, name) == 0)
+            return app->vars[i].value;
+    return NULL;
+}
+
+static void capture_var(const char *name, const char *value,
+    unsigned long specificity, int important, unsigned long order, void *ctx)
+{
+    H2GApp *app = (H2GApp *)ctx;
+    H2GVariable *item;
+    int i;
+    char *copied;
+    (void)specificity; (void)important; (void)order;
+    if (name[0] != '-' || name[1] != '-' || app->vars == NULL)
+        return;
+    copied = h2g_string_copy(value);
+    if (copied == NULL) return;
+    for (i = 0; i < app->var_count; i++)
+        if (strcmp(app->vars[i].name, name) == 0) {
+            free(app->vars[i].value);
+            app->vars[i].value = copied;
+            return;
+        }
+    if (app->var_count == H2G_MAX_VARS) { free(copied); return; }
+    item = &app->vars[app->var_count];
+    item->name = h2g_string_copy(name);
+    if (item->name == NULL) { free(copied); return; }
+    item->value = copied;
+    app->var_count++;
+}
+
+/* Small CSS value evaluator for the first SDL slice.  This is not a
+ * substitute for CSS Values & Units, calculation trees, or inheritance. */
+static const char *resolve_value(const H2GApp *app, const char *value,
+                                 char *out, size_t capacity)
+{
+    const char *start, *end, *substitution, *mul;
+    char name[256];
+    size_t n;
+    float numeric;
+    double multiplier;
+    if (strncmp(value, "var(", 4) == 0) {
+        start = value + 4;
+        end = strchr(start, ')');
+        if (end != NULL) {
+            n = (size_t)(end - start);
+            if (n != 0 && n < sizeof(name)) {
+                memcpy(name, start, n); name[n] = '\0';
+                substitution = find_var(app, name);
+                if (substitution != NULL) {
+                    if (strlen(substitution) >= capacity) return value;
+                    strcpy(out, substitution);
+                    return out;
+                }
+            }
+        }
+    }
+    if (strncmp(value, "calc(var(", 9) == 0) {
+        start = value + 9;
+        end = strchr(start, ')');
+        if (end == NULL) return value;
+        n = (size_t)(end - start);
+        if (n == 0 || n >= sizeof(name)) return value;
+        memcpy(name, start, n); name[n] = '\0';
+        substitution = find_var(app, name);
+        if (substitution == NULL || !css_value(substitution, &numeric))
+            return value;
+        mul = strchr(end + 1, '*');
+        if (mul == NULL) return value;
+        multiplier = strtod(mul + 1, NULL);
+        if (capacity < 48) return value;
+        sprintf(out, "%.5gpx", numeric * multiplier);
+        return out;
+    }
+    return value;
+}
+
+static double h2g_clip_channel(double value)
+{
+    if (value <= 0) return 0;
+    if (value >= 1) return 1;
+    return value;
+}
+
+static unsigned char h2g_srgb_byte(double linear)
+{
+    double v;
+    linear = h2g_clip_channel(linear);
+    if (linear <= 0.0031308) v = 12.92 * linear;
+    else v = 1.055 * pow(linear, 1.0 / 2.4) - 0.055;
+    v = h2g_clip_channel(v);
+    return (unsigned char)(v * 255.0 + .5);
+}
+
+/* OKLCH -> Oklab -> linear sRGB -> encoded sRGB. */
+static int h2g_oklch(const char *value, H2GColor *out)
+{
+    double l, c, hue, a, b, ll, mm, ss;
+    double lr, lg, lb;
+    const double pi = 3.14159265358979323846;
+    if (sscanf(value, "oklch( %lf%% %lf %lf", &l, &c, &hue) != 3)
+        return 0;
+    l /= 100.0;
+    hue *= pi / 180.0;
+    a = c * cos(hue);
+    b = c * sin(hue);
+    ll = l + 0.3963377774 * a + 0.2158037573 * b;
+    mm = l - 0.1055613458 * a - 0.0638541728 * b;
+    ss = l - 0.0894841775 * a - 1.2914855480 * b;
+    ll *= ll * ll;
+    mm *= mm * mm;
+    ss *= ss * ss;
+    lr = 4.0767416621 * ll - 3.3077115913 * mm + 0.2309699292 * ss;
+    lg = -1.2684380046 * ll + 2.6097574011 * mm - 0.3413193965 * ss;
+    lb = -0.0041960863 * ll - 0.7034186147 * mm + 1.7076147010 * ss;
+    *out = color(h2g_srgb_byte(lr), h2g_srgb_byte(lg),
+                 h2g_srgb_byte(lb), 255);
+    return 1;
+}
+
 static int parse_color(const char *v, H2GColor *out)
 {
     unsigned int r, g, b, a = 255;
     size_t n = strlen(v);
+    if (strncmp(v, "oklch(", 6) == 0)
+        return h2g_oklch(v, out);
     if (n == 7 && v[0] == '#' &&
         sscanf(v + 1, "%2x%2x%2x", &r, &g, &b) == 3) {
         *out = color((unsigned char)r,(unsigned char)g,(unsigned char)b,255);
@@ -132,6 +277,16 @@ static int parse_color(const char *v, H2GColor *out)
                          (unsigned char)a);
             return 1;
         }
+    }
+    if (n == 4 && v[0] == '#' && isxdigit((unsigned char)v[1]) &&
+        isxdigit((unsigned char)v[2]) && isxdigit((unsigned char)v[3])) {
+        char mini[3];
+        mini[2] = ' ';
+        mini[0] = v[1]; mini[1] = v[1]; r = (unsigned int)strtoul(mini,NULL,16);
+        mini[0] = v[2]; mini[1] = v[2]; g = (unsigned int)strtoul(mini,NULL,16);
+        mini[0] = v[3]; mini[1] = v[3]; b = (unsigned int)strtoul(mini,NULL,16);
+        *out = color((unsigned char)r,(unsigned char)g,(unsigned char)b,255);
+        return 1;
     }
     if (strcmp(v,"transparent") == 0) { *out = color(0,0,0,0); return 1; }
     if (strcmp(v,"white") == 0) { *out = color(255,255,255,255); return 1; }
@@ -157,8 +312,9 @@ static void apply_declaration(const char *name, const char *value,
     H2GMatchApply *apply = (H2GMatchApply *)ctx;
     H2GStyle *style = apply->style;
     float v;
+    char resolved[2048];
     int i;
-    (void)order;
+    value = resolve_value(apply->app,value,resolved,sizeof(resolved));
     for (i = 0; i < H2G_PROP_COUNT; i++)
         if (strcmp(name, names[i]) == 0) break;
     if (i == H2G_PROP_COUNT) return;
@@ -223,6 +379,7 @@ static H2GStyle style_for(H2GApp *app, const H2GDomNode *node,
         s.fg=color(255,255,255,255);
     }
     apply.style = &s;
+    apply.app = app;
     for (i=0; i<app->sheet_count; i++) {
         apply.base = (unsigned long)i * 100000000UL;
         if (!h2g_css_visit_matching(app->sheets[i],node,
@@ -501,9 +658,9 @@ static void rebuild(H2GApp *app)
         (float)app->viewport_h;
     if (app->scroll>app->document_h-app->viewport_h)
         app->scroll=app->document_h-app->viewport_h;
-    fprintf(stderr,"html2gui: viewport=%dx%d ops=%d document=%.0f%s\n",
+    fprintf(stderr,"html2gui: viewport=%dx%d ops=%d document=%.0f vars=%d%s\n",
       app->viewport_w,app->viewport_h,app->op_count,app->document_h,
-      app->overflow?" (paint buffer exhausted)":"");
+      app->var_count,app->overflow?" (paint buffer exhausted)":"");
 }
 
 static void draw(H2GApp *app)
@@ -558,6 +715,11 @@ static int add_css(H2GApp *app, const char *data, size_t length)
     fprintf(stderr,"html2gui: stylesheet rules=%lu\n",
             (unsigned long)h2g_css_indexed_style_rule_count(sheet));
     app->sheets[app->sheet_count++]=sheet;
+    if (h2g_html_head(app->html) != NULL) {
+        const H2GDomNode *root = h2g_dom_parent(h2g_html_head(app->html));
+        if (root != NULL)
+            (void)h2g_css_visit_matching(sheet,root,capture_var,app);
+    }
     return 1;
 }
 
@@ -608,6 +770,11 @@ int main(int argc, char **argv)
     app.html=h2g_html_parse(html_data,length);
     free(html_data);
     if (!app.html) { fprintf(stderr,"HTML parse failed\n"); return 1; }
+    app.vars=(H2GVariable *)calloc(H2G_MAX_VARS,sizeof(H2GVariable));
+    if (app.vars == NULL) {
+        fprintf(stderr,"out of memory allocating CSS variables\n");
+        return 1;
+    }
     scan_styles(&app,h2g_html_head(app.html),0);
     if (css_path) {
         css_data=read_file(css_path,&length);
@@ -677,6 +844,11 @@ int main(int argc, char **argv)
     TTF_Quit();
     SDL_Quit();
     for (i=0;i<app.sheet_count;i++) h2g_css_destroy(app.sheets[i]);
+    for (i=0;i<app.var_count;i++) {
+        free(app.vars[i].name);
+        free(app.vars[i].value);
+    }
+    free(app.vars);
     h2g_html_destroy(app.html);
     return 0;
 }
