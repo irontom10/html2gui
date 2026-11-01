@@ -24,12 +24,12 @@
 #define H2G_MAX_TEXT 32768
 #define H2G_MAX_VARS 2048
 #define H2G_LINE 4096
-#define H2G_PROP_COUNT 18
+#define H2G_PROP_COUNT 19
 
 typedef struct H2GColor { unsigned char r, g, b, a; } H2GColor;
 typedef struct H2GStyle {
     H2GColor fg, bg;
-    int size, bold, display, flex_column, position, clipped;
+    int size, bold, display, flex_column, position, clipped, grid_columns;
     float margin, padding, gap, width, height, max_width;
     int specified[H2G_PROP_COUNT];
     int imp[H2G_PROP_COUNT];
@@ -309,7 +309,7 @@ static void apply_declaration(const char *name, const char *value,
         "font-weight", "display", "padding", "margin",
         "width", "height", "max-width", "gap",
         "flex-direction", "min-height", "border-radius", "line-height",
-        "position", "clip"
+        "position", "clip", "grid-template-columns"
     };
     H2GMatchApply *apply = (H2GMatchApply *)ctx;
     H2GStyle *style = apply->style;
@@ -344,7 +344,8 @@ static void apply_declaration(const char *name, const char *value,
                           strcmp(value,"800") == 0; break;
     case 5:
         style->display = strcmp(value,"none") == 0 ? 1 :
-                         strcmp(value,"flex") == 0 ? 2 : 0;
+                         strcmp(value,"flex") == 0 ? 2 :
+                         strcmp(value,"grid") == 0 ? 3 : 0;
         break;
     case 6: if (css_value(value,&v) && v >= 0) style->padding=v; break;
     case 7: if (css_value(value,&v)) style->margin=v; break;
@@ -362,6 +363,13 @@ static void apply_declaration(const char *name, const char *value,
         style->clipped = strncmp(value,"rect(",5)==0 ||
                          strncmp(value,"inset(",6)==0;
         break;
+    case 18: {
+        int count = 0;
+        if (sscanf(value,"repeat(%d",&count)==1 &&
+            count > 0 && count <= 12)
+            style->grid_columns=count;
+        break;
+    }
     default: break;
     }
 }
@@ -618,6 +626,30 @@ static float layout_node(H2GApp *app, const H2GDomNode *node,
         if (text) used=layout_text(app,text,len,outer_x+s.padding,inner_y,
                                    inner_w,&s);
         if (used<=0) used=(float)(s.size+5);
+    } else if (s.display==3) {
+        int cols = s.grid_columns > 0 ? s.grid_columns : 1;
+        int col = 0, rows = 0;
+        float cell_w, row_max = 0, row_y = inner_y;
+        cell_w = (inner_w - (cols - 1)*s.gap) / cols;
+        if (cell_w < 20) cell_w = 20;
+        for (child=h2g_dom_first_child(node); child;
+             child=h2g_dom_next_sibling(child)) {
+            if (h2g_dom_type(child)!=H2G_DOM_ELEMENT ||
+                ignored_element(child)) continue;
+            ch=layout_node(app,child,&s,outer_x+s.padding+
+                       col*(cell_w+s.gap),row_y,cell_w,depth+1);
+            if (ch > row_max) row_max = ch;
+            col++;
+            if (col == cols) {
+                used += row_max + s.gap;
+                row_y = inner_y + used;
+                row_max = 0;
+                col = 0;
+                rows++;
+            }
+        }
+        if (col > 0) used += row_max;
+        else if (rows > 0) used -= s.gap;
     } else if (s.display==2 && !s.flex_column) {
         float cell_w, max_h=0;
         for (child=h2g_dom_first_child(node);child;
