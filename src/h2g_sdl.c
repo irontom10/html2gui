@@ -701,8 +701,10 @@ static float layout_editable_input(H2GApp *app, const H2GDomNode *node,
     input->font_bold=style->bold;
     room=(int)(available - 4.0f);
     if (room < 8) room=8;
-    if (app->focused_input != input || start > cursor)
+    if (app->focused_input != input)
         start=0;
+    else if (start > cursor)
+        start=cursor;
     if (app->focused_input == input && font != NULL &&
         h2g_input_width(font,value+start,cursor-start)>room) {
         start=cursor;
