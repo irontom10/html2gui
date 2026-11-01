@@ -538,3 +538,77 @@ size_t h2g_css_indexed_style_rule_count(const H2GCssStylesheet *stylesheet)
 {
     return stylesheet != NULL ? stylesheet->styles_count : 0;
 }
+
+static int h2g_css_selector_contains_root(const lexbor_str_t *raw)
+{
+    const char *s;
+    size_t i;
+    if (raw == NULL || raw->data == NULL || raw->length < 5) return 0;
+    s = (const char *)raw->data;
+    for (i = 0; i + 5 <= raw->length; i++)
+        if (memcmp(s + i, ":root", 5) == 0)
+            return 1;
+    return 0;
+}
+
+static int h2g_css_visit_bad_root(const lxb_css_rule_t *node, int depth,
+             H2GCssDeclarationFn callback, void *user)
+{
+    const lxb_css_rule_t *rule, *decl;
+    const lxb_css_rule_bad_style_t *bad;
+    const lxb_css_rule_declaration_t *property;
+    const lxb_css_rule_list_t *nested;
+    H2GStringWriter writer;
+    lxb_status_t status;
+    char name[256], value[2048];
+    int found = 0;
+    unsigned long order = 0;
+
+    if (depth >= 32) return 0;
+    for (rule = node; rule != NULL; rule = rule->next) {
+        if (rule->type == LXB_CSS_RULE_BAD_STYLE) {
+            bad = lxb_css_rule_bad_style(rule);
+            if (h2g_css_selector_contains_root(&bad->selectors) &&
+                bad->declarations != NULL) {
+                for (decl = bad->declarations->first; decl;
+                     decl = decl->next) {
+                    if (decl->type != LXB_CSS_RULE_DECLARATION)
+                        continue;
+                    property = lxb_css_rule_declaration(decl);
+                    if (property->type != LXB_CSS_PROPERTY__CUSTOM)
+                        continue;
+                    writer.data = name; writer.capacity = sizeof(name);
+                    writer.used = 0; name[0] = '\0';
+                    status = lxb_css_rule_declaration_serialize_name(
+                        property, h2g_append_css, &writer);
+                    if (status != LXB_STATUS_OK) continue;
+                    writer.data = value; writer.capacity = sizeof(value);
+                    writer.used = 0; value[0] = '\0';
+                    status = lxb_css_property_serialize(property->u.user,
+                             property->type, h2g_append_css, &writer);
+                    if (status != LXB_STATUS_OK) continue;
+                    callback(name,value,1UL,
+                        property->important ? 1 : 0,order++,user);
+                    found++;
+                }
+            }
+        }
+        nested = h2g_layer_children(rule);
+        if (nested != NULL)
+            found += h2g_css_visit_bad_root(nested->first,depth+1,
+                                             callback,user);
+    }
+    return found;
+}
+
+int h2g_css_visit_root_variables(const H2GCssStylesheet *stylesheet,
+                                 H2GCssDeclarationFn callback, void *user)
+{
+    const lxb_css_rule_list_t *root;
+    if (stylesheet == NULL || stylesheet->native == NULL ||
+        stylesheet->native->root == NULL || callback == NULL)
+        return 0;
+    root = lxb_css_rule_list(stylesheet->native->root);
+    if (root == NULL) return 0;
+    return h2g_css_visit_bad_root(root->first,0,callback,user);
+}
