@@ -1,7 +1,7 @@
 name: renderer
 on:
   push:
-    branches: [html2gui/standards-parser-bootstrap]
+    branches: [main, html2gui/standards-parser-bootstrap]
   pull_request:
 
 jobs:
@@ -43,7 +43,7 @@ jobs:
       - name: Compile C89 renderer and run without a display
         run: |
           pkg-config --modversion sdl3 sdl3-ttf
-          make clean all test render renderer-test
+          make clean all test render renderer-test native-callback-test native-example
           make torture-test
       - name: Upload headless torture screenshot
         if: always()
