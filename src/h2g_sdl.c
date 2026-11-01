@@ -1263,6 +1263,36 @@ int h2g_renderer_run_ex(const char *html_path, const char *css_path,
         }
         fprintf(stderr,"html2gui: TORTURE VERIFY PASS\n");
     }
+    if (headless && getenv("H2G_TEST_INPUT_VIEW") != NULL) {
+        int verified=0;
+        for (i=0;i<app.op_count;i++) {
+            H2GOp *op=&app.ops[i];
+            if (op->type==4 && op->input != NULL &&
+                strcmp(op->input->id,"long")==0) {
+                H2GInput *input=op->input;
+                TTF_Font *font=get_font(&app,input->font_size,
+                                        input->font_bold);
+                int width=h2g_input_width(font,
+                         input->editor.text+input->view_start,
+                         input->view_end-input->view_start);
+                int room=(int)(op->rect.x+op->rect.w-input->text_x-4);
+                if (input->view_start!=0 || input->view_end==0 ||
+                    input->view_end>=input->editor.length ||
+                    width>room) {
+                    fprintf(stderr,"html2gui: INPUT VIEWPORT VERIFY FAIL\n");
+                    return 1;
+                }
+                verified=1;
+                break;
+            }
+        }
+        if (!verified) {
+            fprintf(stderr,"html2gui: INPUT VIEWPORT NOT FOUND\n");
+            return 1;
+        }
+        fprintf(stderr,"html2gui: INPUT VIEWPORT VERIFY PASS\n");
+    }
+
     /* Opt-in synthetic hit-test for the CI callback smoke test only.
      * Never inject clicks in a normal interactive application.
      */
