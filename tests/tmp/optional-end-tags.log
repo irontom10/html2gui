@@ -1,0 +1,3 @@
+tests/optional-end-tags.html:5: warning: <datalist> mapped to GtkBox
+tests/optional-end-tags.html:21: warning: <dl> mapped to GtkBox
+html2gtk: 54 nodes, 2 warnings; wrote tests/tmp/optional-end-tags.ui and tests/tmp/optional-end-tags.css

@@ -1,0 +1,4 @@
+viewport=1600 nodes=35 draws=16 document_height=154
+id=side visible=1 x=0 y=0 w=300 h=39 cols=1
+id=content visible=1 x=300 y=0 w=1300 h=154 cols=1
+id=metrics visible=1 x=300 y=54 w=1300 h=100 cols=4

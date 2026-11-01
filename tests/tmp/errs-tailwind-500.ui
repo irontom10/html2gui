@@ -1,0 +1,365 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0"/>
+  <object class="GtkWindow" id="main_window">
+    <property name="title">ERRS</property>
+    <property name="default-width">500</property>
+    <property name="default-height">750</property>
+    <child>
+      <object class="GtkScrolledWindow" id="scroll_root">
+        <property name="hexpand">true</property>
+        <property name="vexpand">true</property>
+        <child>
+          <object class="GtkBox" id="root_box">
+            <property name="orientation">vertical</property>
+            <property name="hexpand">true</property>
+            <property name="vexpand">true</property>
+            <child>
+              <object class="GtkBox" id="node_5">
+                <property name="hexpand">true</property>
+                <property name="vexpand">true</property>
+                <property name="orientation">vertical</property>
+                <property name="spacing">0</property>
+                <style><class name="tw-5"/></style>
+                <child>
+                  <object class="GtkBox" id="outer">
+                    <property name="vexpand">true</property>
+                    <property name="orientation">vertical</property>
+                    <property name="spacing">0</property>
+                    <child>
+                      <object class="GtkBox" id="sidebar">
+                        <property name="orientation">vertical</property>
+                        <property name="spacing">0</property>
+                        <style><class name="tw-7"/></style>
+                        <child>
+                          <object class="GtkLabel" id="node_8">
+                            <property name="xalign">0.0</property>
+                            <property name="label">ERRS</property>
+                            <property name="wrap">true</property>
+                            <style><class name="html-h1"/><class name="tw-8"/></style>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkLabel" id="node_10">
+                            <property name="xalign">0.0</property>
+                            <property name="label">diagnostics</property>
+                            <property name="wrap">true</property>
+                            <style><class name="tw-10"/></style>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkBox" id="menu">
+                            <property name="orientation">vertical</property>
+                            <property name="spacing">0</property>
+                            <child>
+                              <object class="GtkBox" id="node_13">
+                                <property name="orientation">vertical</property>
+                                <property name="spacing">0</property>
+                                <style><class name="tw-13"/></style>
+                                <child>
+                                  <object class="GtkLabel" id="node_14">
+                                    <property name="xalign">0.0</property>
+                                    <property name="label">Current</property>
+                                    <property name="wrap">true</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkBox" id="node_15">
+                                <property name="orientation">vertical</property>
+                                <property name="spacing">0</property>
+                                <style><class name="tw-15"/></style>
+                                <child>
+                                  <object class="GtkLabel" id="node_16">
+                                    <property name="xalign">0.0</property>
+                                    <property name="label">Status</property>
+                                    <property name="wrap">true</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkLabel" id="node_17">
+                            <property name="xalign">0.0</property>
+                            <property name="label">Ready</property>
+                            <property name="wrap">true</property>
+                            <style><class name="tw-17"/></style>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkBox" id="node_19">
+                        <property name="width-request">0</property>
+                        <property name="orientation">vertical</property>
+                        <property name="spacing">0</property>
+                        <style><class name="tw-19"/></style>
+                        <child>
+                          <object class="GtkLabel" id="node_20">
+                            <property name="xalign">0.0</property>
+                            <property name="label">Calibration</property>
+                            <property name="wrap">true</property>
+                            <style><class name="html-h2"/><class name="tw-20"/></style>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkButton" id="node_22">
+                            <property name="label">Connect</property>
+                            <style><class name="tw-22"/></style>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkGrid" id="metrics">
+                            <property name="column-spacing">16</property>
+                            <property name="row-spacing">16</property>
+                            <property name="column-homogeneous">true</property>
+                            <child>
+                              <object class="GtkBox" id="node_25">
+                                <property name="orientation">vertical</property>
+                                <property name="spacing">0</property>
+                                <layout>
+                                  <property name="column">0</property>
+                                  <property name="row">0</property>
+                                </layout>
+                                <child>
+                                  <object class="GtkLabel" id="node_26">
+                                    <property name="xalign">0.0</property>
+                                    <property name="label">Metric A</property>
+                                    <property name="wrap">true</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkBox" id="node_27">
+                                <property name="orientation">vertical</property>
+                                <property name="spacing">0</property>
+                                <layout>
+                                  <property name="column">0</property>
+                                  <property name="row">1</property>
+                                </layout>
+                                <child>
+                                  <object class="GtkLabel" id="node_28">
+                                    <property name="xalign">0.0</property>
+                                    <property name="label">Metric B</property>
+                                    <property name="wrap">true</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkBox" id="node_29">
+                                <property name="orientation">vertical</property>
+                                <property name="spacing">0</property>
+                                <layout>
+                                  <property name="column">0</property>
+                                  <property name="row">2</property>
+                                </layout>
+                                <child>
+                                  <object class="GtkLabel" id="node_30">
+                                    <property name="xalign">0.0</property>
+                                    <property name="label">Metric C</property>
+                                    <property name="wrap">true</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkBox" id="node_31">
+                                <property name="orientation">vertical</property>
+                                <property name="spacing">0</property>
+                                <layout>
+                                  <property name="column">0</property>
+                                  <property name="row">3</property>
+                                </layout>
+                                <child>
+                                  <object class="GtkLabel" id="node_32">
+                                    <property name="xalign">0.0</property>
+                                    <property name="label">Metric D</property>
+                                    <property name="wrap">true</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkGrid" id="content">
+                            <property name="column-spacing">0</property>
+                            <property name="row-spacing">0</property>
+                            <property name="column-homogeneous">true</property>
+                            <child>
+                              <object class="GtkBox" id="wide">
+                                <property name="orientation">vertical</property>
+                                <property name="spacing">0</property>
+                                <layout>
+                                  <property name="column">0</property>
+                                  <property name="row">0</property>
+                                </layout>
+                                <child>
+                                  <object class="GtkBox" id="node_35">
+                                    <property name="orientation">vertical</property>
+                                    <property name="spacing">0</property>
+                                    <style><class name="tw-35"/></style>
+                                    <child>
+                                      <object class="GtkLabel" id="node_36">
+                                        <property name="xalign">0.0</property>
+                                        <property name="label">Summary</property>
+                                        <property name="wrap">true</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkBox" id="node_37">
+                                    <property name="orientation">vertical</property>
+                                    <property name="spacing">0</property>
+                                    <style><class name="tw-37"/></style>
+                                    <child>
+                                      <object class="GtkLabel" id="node_38">
+                                        <property name="xalign">0.0</property>
+                                        <property name="label">Details</property>
+                                        <property name="wrap">true</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkBox" id="node_39">
+                                    <property name="orientation">vertical</property>
+                                    <property name="spacing">0</property>
+                                    <child>
+                                      <object class="GtkEntry" id="search">
+                                        <property name="placeholder-text">Search</property>
+                                        <style><class name="tw-40"/></style>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkScrolledWindow" id="scroll">
+                                    <property name="hscrollbar-policy">automatic</property>
+                                    <property name="vscrollbar-policy">never</property>
+                                    <child><object class="GtkBox">
+                                      <property name="orientation">vertical</property>
+                                      <property name="spacing">0</property>
+                                      <child>
+                                        <object class="GtkGrid" id="records">
+                                          <property name="width-request">680</property>
+                                          <property name="column-spacing">0</property>
+                                          <property name="row-spacing">0</property>
+                                          <property name="column-homogeneous">true</property>
+                                          <style><class name="tw-42"/></style>
+                                          <child>
+                                            <object class="GtkLabel" id="node_45">
+                                              <property name="xalign">0.0</property>
+                                              <property name="label">ID</property>
+                                              <property name="wrap">true</property>
+                                              <style><class name="html-th"/><class name="tw-44"/></style>
+                                              <layout>
+                                                <property name="column">0</property>
+                                                <property name="row">0</property>
+                                              </layout>
+                                            </object>
+                                          </child>
+                                          <child>
+                                            <object class="GtkLabel" id="node_47">
+                                              <property name="xalign">0.0</property>
+                                              <property name="label">Status</property>
+                                              <property name="wrap">true</property>
+                                              <style><class name="html-th"/><class name="tw-44"/></style>
+                                              <layout>
+                                                <property name="column">1</property>
+                                                <property name="row">0</property>
+                                              </layout>
+                                            </object>
+                                          </child>
+                                          <child>
+                                            <object class="GtkLabel" id="node_51">
+                                              <property name="xalign">0.0</property>
+                                              <property name="label">A</property>
+                                              <property name="wrap">true</property>
+                                              <style><class name="tw-51"/></style>
+                                              <layout>
+                                                <property name="column">0</property>
+                                                <property name="row">1</property>
+                                              </layout>
+                                            </object>
+                                          </child>
+                                          <child>
+                                            <object class="GtkLabel" id="node_53">
+                                              <property name="xalign">0.0</property>
+                                              <property name="label">Active</property>
+                                              <property name="wrap">true</property>
+                                              <style><class name="tw-53"/></style>
+                                              <layout>
+                                                <property name="column">1</property>
+                                                <property name="row">1</property>
+                                              </layout>
+                                            </object>
+                                          </child>
+                                          <child>
+                                            <object class="GtkLabel" id="node_56">
+                                              <property name="xalign">0.0</property>
+                                              <property name="label">B</property>
+                                              <property name="wrap">true</property>
+                                              <style><class name="tw-51"/><class name="tw-divider-49"/></style>
+                                              <layout>
+                                                <property name="column">0</property>
+                                                <property name="row">2</property>
+                                              </layout>
+                                            </object>
+                                          </child>
+                                          <child>
+                                            <object class="GtkLabel" id="node_58">
+                                              <property name="xalign">0.0</property>
+                                              <property name="label">Idle</property>
+                                              <property name="wrap">true</property>
+                                              <style><class name="tw-58"/><class name="tw-divider-49"/></style>
+                                              <layout>
+                                                <property name="column">1</property>
+                                                <property name="row">2</property>
+                                              </layout>
+                                            </object>
+                                          </child>
+                                        </object>
+                                      </child>
+                                    </object></child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkBox" id="node_60">
+                                <property name="orientation">vertical</property>
+                                <property name="spacing">0</property>
+                                <style><class name="tw-60"/></style>
+                                <layout>
+                                  <property name="column">0</property>
+                                  <property name="row">1</property>
+                                </layout>
+                                <child>
+                                  <object class="GtkButton" id="node_61">
+                                    <property name="label">Go</property>
+                                    <style><class name="tw-61"/></style>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
+  </object>
+</interface>

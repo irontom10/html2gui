@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0"/>
+  <object class="GtkWindow" id="main_window">
+    <property name="title">T</property>
+    <property name="default-width">500</property>
+    <property name="default-height">750</property>
+    <child>
+      <object class="GtkScrolledWindow" id="scroll_root">
+        <property name="hexpand">true</property>
+        <property name="vexpand">true</property>
+        <child>
+          <object class="GtkBox" id="root_box">
+            <property name="orientation">vertical</property>
+            <property name="hexpand">true</property>
+            <property name="vexpand">true</property>
+            <child>
+              <object class="GtkBox" id="node_2">
+                <property name="hexpand">true</property>
+                <property name="vexpand">true</property>
+                <property name="orientation">vertical</property>
+                <property name="spacing">0</property>
+                <child>
+                  <object class="GtkBox" id="shell">
+                    <property name="orientation">vertical</property>
+                    <property name="spacing">0</property>
+                    <child>
+                      <object class="GtkBox" id="sidebar">
+                        <property name="visible">false</property>
+                        <property name="orientation">vertical</property>
+                        <property name="spacing">0</property>
+                        <child>
+                          <object class="GtkLabel" id="node_5">
+                            <property name="xalign">0.0</property>
+                            <property name="label">Navigation</property>
+                            <property name="wrap">true</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkBox" id="page">
+                        <property name="width-request">0</property>
+                        <property name="orientation">vertical</property>
+                        <property name="spacing">0</property>
+                        <style><class name="tw-6"/></style>
+                        <child>
+                          <object class="GtkBox" id="top">
+                            <property name="orientation">vertical</property>
+                            <property name="spacing">0</property>
+                            <child>
+                              <object class="GtkLabel" id="node_8">
+                                <property name="xalign">0.0</property>
+                                <property name="label">Header</property>
+                                <property name="wrap">true</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkBox" id="h2g_clamp_9_1700_-1_1">
+                            <property name="orientation">vertical</property>
+                            <property name="hexpand">true</property>
+                            <property name="overflow">hidden</property>
+                            <child>
+                              <object class="GtkBox" id="page_main">
+                                <property name="hexpand">true</property>
+                                <property name="orientation">vertical</property>
+                                <property name="spacing">0</property>
+                                <child>
+                                  <object class="GtkLabel" id="node_10">
+                                    <property name="xalign">0.0</property>
+                                    <property name="label">Body</property>
+                                    <property name="wrap">true</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
+  </object>
+</interface>

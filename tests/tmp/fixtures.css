@@ -1,0 +1,15 @@
+/* Generated GTK4 CSS. Tailwind utility subset, not web CSS. */
+.html-h1 { font-size: 28px; font-weight: 700; }
+.html-h2 { font-size: 22px; font-weight: 600; }
+.html-h3 { font-size: 18px; font-weight: 600; }
+.html-th { font-weight: 700; }
+.tw-2 {
+  padding: 16px;
+  background-color: #ffffff;
+}
+.tw-23 {
+  background-color: #2563eb;
+  padding-left: 8px; padding-right: 8px;
+  padding-top: 4px; padding-bottom: 4px;
+  border-radius: 6px;
+}

@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0"/>
+  <object class="GtkWindow" id="main_window">
+    <property name="title">Grow test</property>
+    <property name="default-width">1100</property>
+    <property name="default-height">750</property>
+    <child>
+      <object class="GtkScrolledWindow" id="scroll_root">
+        <property name="hexpand">true</property>
+        <property name="vexpand">true</property>
+        <child>
+          <object class="GtkBox" id="root_box">
+            <property name="orientation">vertical</property>
+            <property name="hexpand">true</property>
+            <property name="vexpand">true</property>
+            <child>
+              <object class="GtkBox" id="node_5">
+                <property name="hexpand">true</property>
+                <property name="vexpand">true</property>
+                <property name="orientation">vertical</property>
+                <property name="spacing">0</property>
+                <style><class name="tw-5"/></style>
+                <child>
+                  <object class="GtkBox" id="node_6">
+                    <property name="orientation">vertical</property>
+                    <property name="spacing">0</property>
+                    <child>
+                      <object class="GtkLabel" id="node_7">
+                        <property name="xalign">0.0</property>
+                        <property name="label">Header</property>
+                        <property name="wrap">true</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkBox" id="grow_main">
+                    <property name="vexpand">true</property>
+                    <property name="orientation">vertical</property>
+                    <property name="spacing">0</property>
+                    <child>
+                      <object class="GtkBox" id="grow_section">
+                        <property name="vexpand">true</property>
+                        <property name="orientation">vertical</property>
+                        <property name="spacing">0</property>
+                        <style><class name="tw-9"/></style>
+                        <child>
+                          <object class="GtkLabel" id="node_10">
+                            <property name="xalign">0.0</property>
+                            <property name="label">Flexible</property>
+                            <property name="wrap">true</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
+  </object>
+</interface>

@@ -1,0 +1,4 @@
+viewport=650 nodes=15223 draws=10938 document_height=146475
+id=main visible=1 x=0 y=64 w=650 h=146411 cols=1
+id=layout visible=1 x=32 y=865 w=586 h=1384 cols=1
+id=class-count visible=1 x=52 y=571 w=245 h=54 cols=1
