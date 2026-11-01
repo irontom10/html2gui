@@ -36,6 +36,8 @@ struct h2g_css_stylesheet {
     lxb_css_parser_t *parser;
     lxb_css_stylesheet_t *native;
     lxb_selectors_t *matcher;
+    char *source;
+    size_t source_length;
     H2GIndexedRule *styles;
     size_t styles_count;
     size_t styles_capacity;
@@ -286,6 +288,15 @@ H2GCssStylesheet *h2g_css_parse(const char *utf8, size_t length)
         return NULL;
     }
 
+    stylesheet->source = (char *)malloc(length + 1);
+    if (stylesheet->source == NULL) {
+        h2g_css_destroy(stylesheet);
+        return NULL;
+    }
+    memcpy(stylesheet->source,utf8 != NULL ? utf8 : "",length);
+    stylesheet->source[length] = '\0';
+    stylesheet->source_length = length;
+
     stylesheet->native = lxb_css_stylesheet_create(NULL);
     if (stylesheet->native == NULL) {
         h2g_css_destroy(stylesheet);
@@ -315,6 +326,7 @@ void h2g_css_destroy(H2GCssStylesheet *stylesheet)
 {
     if (stylesheet == NULL) return;
     free(stylesheet->styles);
+    free(stylesheet->source);
     if (stylesheet->matcher != NULL)
         lxb_selectors_destroy(stylesheet->matcher, 1);
     if (stylesheet->native != NULL)
@@ -476,18 +488,16 @@ static int h2g_css_emit_declarations(const lxb_css_rule_declaration_list_t *list
  * An unknown query is NOT treated as true. In particular, do not apply
  * arbitrary @supports / color scheme / print rules unconditionally.
  */
-static int h2g_css_width_media(const lexbor_str_t *prelude, float viewport)
+static int h2g_css_width_media(const char *query, size_t length,
+                               float viewport)
 {
     char expression[256], property[48], operator[4], unit[16];
     const char *src, *end, *p;
     double amount, target;
-    size_t length;
     int opchars;
-    if (prelude == NULL || prelude->data == NULL || viewport <= 0)
-        return 0;
-    length = prelude->length;
+    if (query == NULL || viewport <= 0) return 0;
     if (length >= sizeof(expression)) return 0;
-    memcpy(expression, prelude->data, length);
+    memcpy(expression, query, length);
     expression[length] = '\0';
     src = expression;
     p = strchr(src, '(');
@@ -546,12 +556,17 @@ static int h2g_css_width_media(const lexbor_str_t *prelude, float viewport)
     return 0;
 }
 
-static void h2g_css_emit_nested(const lxb_css_rule_t *rule, int depth,
-    float viewport, unsigned long specificity, unsigned long sequence,
+static void h2g_css_emit_nested(const H2GCssStylesheet *sheet,
+    const lxb_css_rule_t *rule, int depth, float viewport,
+    unsigned long specificity, unsigned long sequence,
     unsigned long *order, H2GCssDeclarationFn callback, void *user)
 {
     const lxb_css_rule_at_t *at;
     const lxb_css_at_rule__custom_t *custom;
+    const lxb_css_rule_list_t *block;
+    const char *query;
+    size_t query_length;
+
     if (depth >= 32 || viewport <= 0) return;
     for (; rule != NULL; rule = rule->next) {
         if (rule->type == LXB_CSS_RULE_DECLARATION_LIST) {
@@ -561,13 +576,29 @@ static void h2g_css_emit_nested(const lxb_css_rule_t *rule, int depth,
         }
         if (rule->type != LXB_CSS_RULE_AT_RULE) continue;
         at = lxb_css_rule_at(rule);
-        if (at->type != LXB_CSS_AT_RULE__CUSTOM) continue;
-        custom = at->u.custom;
-        if (custom == NULL || custom->block == NULL) continue;
-        if (custom->name.length == 5 &&
-            memcmp(custom->name.data, "media", 5) == 0 &&
-            h2g_css_width_media(&custom->prelude, viewport))
-            h2g_css_emit_nested(custom->block->first,depth + 1,viewport,
+        query = NULL; query_length = 0; block = NULL;
+
+        if (at->type == LXB_CSS_AT_RULE_MEDIA) {
+            if (at->u.media == NULL) continue;
+            block = at->u.media->block;
+            if (at->prelude_end > at->prelude_begin &&
+                at->prelude_end <= sheet->source_length) {
+                query = sheet->source + at->prelude_begin;
+                query_length = at->prelude_end - at->prelude_begin;
+            }
+        } else if (at->type == LXB_CSS_AT_RULE__CUSTOM) {
+            custom = at->u.custom;
+            if (custom == NULL) continue;
+            if (custom->name.length != 5 ||
+                memcmp(custom->name.data,"media",5) != 0)
+                continue;
+            block = custom->block;
+            query = (const char *)custom->prelude.data;
+            query_length = custom->prelude.length;
+        }
+        if (block != NULL && block->first != NULL &&
+            h2g_css_width_media(query,query_length,viewport))
+            h2g_css_emit_nested(sheet,block->first,depth+1,viewport,
                                  specificity,sequence,order,callback,user);
     }
 }
@@ -592,7 +623,7 @@ static int h2g_css_match_indexed(const H2GCssStylesheet *stylesheet,
     h2g_css_emit_declarations(style->declarations, match.best,
            entry->sequence, &index, callback, user);
     if (style->child != NULL && style->child->first != NULL)
-        h2g_css_emit_nested(style->child->first,0,viewport,
+        h2g_css_emit_nested(stylesheet,style->child->first,0,viewport,
                match.best,entry->sequence,&index,callback,user);
     return 1;
 }
