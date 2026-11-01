@@ -46,6 +46,9 @@ typedef struct H2GInput {
     const H2GDomNode *node;
     char id[96];
     H2GTextInput editor;
+    size_t view_start, view_end;
+    float text_x;
+    int font_size, font_bold;
 } H2GInput;
 
 typedef struct H2GFont {
@@ -633,6 +636,117 @@ static float layout_text(H2GApp *app, const char *src, size_t length,
     return total;
 }
 
+/* UTF-8 codepoint navigation over the already validated input buffer. */
+static size_t h2g_input_next(const char *text, size_t length, size_t pos)
+{
+    if (pos >= length) return length;
+    pos++;
+    while (pos < length &&
+           (((unsigned char)text[pos] & 0xc0) == 0x80))
+        pos++;
+    return pos;
+}
+
+static size_t h2g_input_prev(const char *text, size_t pos)
+{
+    if (pos == 0) return 0;
+    pos--;
+    while (pos > 0 &&
+           (((unsigned char)text[pos] & 0xc0) == 0x80))
+        pos--;
+    return pos;
+}
+
+static int h2g_input_width(TTF_Font *font, const char *data, size_t length)
+{
+    int width=0, height=0;
+    if (font == NULL || length == 0) return 0;
+    if (!TTF_GetStringSize(font,data,length,&width,&height)) return 0;
+    return width;
+}
+
+/* Paint a bounded substring instead of creating enormous SDL textures for
+ * long input values. Keep the cursor in view when a field is focused.
+ */
+static float layout_editable_input(H2GApp *app, const H2GDomNode *node,
+                                   H2GInput *input, float x, float y,
+                                   float available, const H2GStyle *style)
+{
+    const char *value=input->editor.text;
+    size_t length=input->editor.length;
+    size_t cursor=input->editor.cursor;
+    size_t start=input->view_start, end, previous, next, visible_length;
+    const char *placeholder;
+    size_t placeholder_length;
+    char visible[H2G_TEXT_INPUT_MAX_BYTES + 1];
+    TTF_Font *font=get_font(app,style->size,style->bold);
+    H2GOp *caret;
+    int room, caret_width=0;
+    float used=0;
+
+    input->text_x=x;
+    input->font_size=style->size;
+    input->font_bold=style->bold;
+    room=(int)(available - 4.0f);
+    if (room < 8) room=8;
+    if (app->focused_input != input || start > cursor)
+        start=0;
+    if (app->focused_input == input && font != NULL &&
+        h2g_input_width(font,value+start,cursor-start)>room) {
+        start=cursor;
+        while (start > 0) {
+            previous=h2g_input_prev(value,start);
+            if (h2g_input_width(font,value+previous,
+                                cursor-previous)>room)
+                break;
+            start=previous;
+        }
+    }
+    end=start;
+    while (end < length) {
+        next=h2g_input_next(value,length,end);
+        if (font != NULL &&
+            h2g_input_width(font,value+start,next-start)>room)
+            break;
+        end=next;
+    }
+    if (end==start && start<length)
+        end=h2g_input_next(value,length,start);
+    input->view_start=start;
+    input->view_end=end;
+    visible_length=end-start;
+    if (visible_length > 0) {
+        memcpy(visible,value+start,visible_length);
+        visible[visible_length]='\0';
+        used=add_line(app,visible,x,y,style);
+    } else {
+        H2GStyle dim=*style;
+        dim.fg=color(125,138,157,255);
+        placeholder=h2g_dom_attribute(node,"placeholder",
+                                       &placeholder_length);
+        if (placeholder != NULL)
+            used=layout_text(app,placeholder,placeholder_length,x,y,
+                             available,&dim);
+    }
+
+    if (app->focused_input == input) {
+        if (cursor < start) cursor=start;
+        if (cursor > end) cursor=end;
+        caret_width=h2g_input_width(font,value+start,cursor-start);
+        if (caret_width>room) caret_width=room;
+        caret=add_op(app,1);
+        if (caret != NULL) {
+            caret->rect.x=x+(float)caret_width;
+            caret->rect.y=y+2;
+            caret->rect.w=2;
+            caret->rect.h=(float)style->size+2;
+            caret->color=color(37,99,235,255);
+        }
+    }
+    if (used<=0) used=(float)(style->size+5);
+    return used;
+}
+
 static int is_text_container(const H2GDomNode *node)
 {
     return tag_is(node,"p") || tag_is(node,"h1") || tag_is(node,"h2") ||
@@ -714,36 +828,23 @@ static float layout_node(H2GApp *app, const H2GDomNode *node,
         if (editable_input(node))
             input=get_input(app,node);
         if (input != NULL) {
-            if (input->editor.length > 0) {
-                used=add_line(app,input->editor.text,outer_x+s.padding,
-                              inner_y,&s);
-            } else {
-                H2GStyle placeholder=s;
-                placeholder.fg=color(125,138,157,255);
-                text=h2g_dom_attribute(node,"placeholder",&len);
-                if (text != NULL)
-                    used=layout_text(app,text,len,outer_x+s.padding,
-                                     inner_y,inner_w,&placeholder);
-            }
-            if (app->focused_input == input) {
-                TTF_Font *font=get_font(app,s.size,s.bold);
-                int width=0, height=0;
-                H2GOp *caret;
-                if (font != NULL && input->editor.cursor > 0)
-                    (void)TTF_GetStringSize(font,input->editor.text,
-                           input->editor.cursor,&width,&height);
-                caret=add_op(app,1);
-                if (caret != NULL) {
-                    caret->rect.x=outer_x+s.padding+(float)width;
-                    caret->rect.y=inner_y+2;
-                    caret->rect.w=2;
-                    caret->rect.h=(float)s.size+2;
-                    caret->color=color(37,99,235,255);
-                }
-            }
+            used=layout_editable_input(app,node,input,
+                                       outer_x+s.padding,inner_y,
+                                       inner_w,&s);
         } else {
+            /* Unsupported password controls must never paint the raw
+             * value attribute. They are not editable in this slice.
+             */
+            const char *type;
+            size_t type_length=0;
+            int password=0;
+            type=h2g_dom_attribute(node,"type",&type_length);
+            if (type != NULL && type_length == 8 &&
+                memcmp(type,"password",8)==0)
+                password=1;
             text=h2g_dom_attribute(node,"placeholder",&len);
-            if (!text) text=h2g_dom_attribute(node,"value",&len);
+            if (text == NULL && !password)
+                text=h2g_dom_attribute(node,"value",&len);
             if (text) used=layout_text(app,text,len,outer_x+s.padding,
                                        inner_y,inner_w,&s);
         }
