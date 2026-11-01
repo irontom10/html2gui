@@ -45,3 +45,10 @@ jobs:
           pkg-config --modversion sdl3 sdl3-ttf
           make clean all test render renderer-test
           make torture-test
+      - name: Upload headless torture screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: torture-screenshot
+          path: build/torture.bmp
+          if-no-files-found: ignore
