@@ -9,6 +9,7 @@
  */
 #include "html2gui/parser.h"
 #include "html2gui/renderer.h"
+#include "h2g_text_input.h"
 #include <SDL3/SDL.h>
 #include <SDL3_ttf/SDL_ttf.h>
 #include <ctype.h>
@@ -25,6 +26,7 @@
 #define H2G_MAX_VARS 2048
 #define H2G_LINE 4096
 #define H2G_PROP_COUNT 19
+#define H2G_MAX_INPUTS 256
 
 typedef struct H2GColor { unsigned char r, g, b, a; } H2GColor;
 typedef struct H2GStyle {
@@ -40,6 +42,12 @@ typedef struct H2GVariable {
     char *value;
 } H2GVariable;
 
+typedef struct H2GInput {
+    const H2GDomNode *node;
+    char id[96];
+    H2GTextInput editor;
+} H2GInput;
+
 typedef struct H2GFont {
     int size, bold;
     TTF_Font *font;
@@ -50,6 +58,7 @@ typedef struct H2GOp {
     H2GColor color;
     SDL_Texture *texture;
     char id[96];
+    H2GInput *input;
 } H2GOp;
 typedef struct H2GApp {
     H2GHtmlDocument *html;
@@ -67,7 +76,11 @@ typedef struct H2GApp {
     int dark_backgrounds;
     float document_h, scroll, first_h1_y;
     H2GButtonCallback on_button;
-    void *button_user;
+    H2GInputCallback on_input;
+    void *callback_user;
+    H2GInput *inputs;
+    H2GInput *focused_input;
+    int input_count;
 } H2GApp;
 typedef struct H2GMatchApply {
     H2GStyle *style;
@@ -395,6 +408,8 @@ static void apply_declaration(const char *name, const char *value,
     }
 }
 
+static int editable_input(const H2GDomNode *node);
+
 static H2GStyle style_for(H2GApp *app, const H2GDomNode *node,
                           const H2GStyle *parent)
 {
@@ -417,6 +432,11 @@ static H2GStyle style_for(H2GApp *app, const H2GDomNode *node,
         s.bg=color(42,100,215,255);
         s.fg=color(255,255,255,255);
     }
+    if (editable_input(node)) {
+        s.padding=10; s.margin=5;
+        s.bg=color(255,255,255,255);
+        s.fg=color(26,35,53,255);
+    }
     apply.style = &s;
     apply.app = app;
     for (i=0; i<app->sheet_count; i++) {
@@ -426,6 +446,54 @@ static H2GStyle style_for(H2GApp *app, const H2GDomNode *node,
             fprintf(stderr,"html2gui: CSS match error\n");
     }
     return s;
+}
+
+/* This first editor supports text-like single-line controls only.
+ * Checkboxes, radios, file pickers and password fields need specialized UI.
+ */
+static int editable_input(const H2GDomNode *node)
+{
+    size_t length;
+    const char *type;
+    if (!tag_is(node, "input") ||
+        h2g_dom_attribute(node, "disabled", NULL) != NULL ||
+        h2g_dom_attribute(node, "readonly", NULL) != NULL)
+        return 0;
+    type = h2g_dom_attribute(node, "type", &length);
+    if (type == NULL || length == 0) return 1;
+    return (length == 4 && memcmp(type, "text", 4) == 0) ||
+           (length == 6 && memcmp(type, "search", 6) == 0) ||
+           (length == 5 && memcmp(type, "email", 5) == 0) ||
+           (length == 3 && memcmp(type, "tel", 3) == 0) ||
+           (length == 3 && memcmp(type, "url", 3) == 0);
+}
+
+static H2GInput *get_input(H2GApp *app, const H2GDomNode *node)
+{
+    H2GInput *input;
+    const char *value;
+    size_t len;
+    int i;
+    if (app->inputs == NULL) return NULL;
+    for (i=0;i<app->input_count;i++)
+        if (app->inputs[i].node == node)
+            return &app->inputs[i];
+    if (app->input_count >= H2G_MAX_INPUTS) return NULL;
+    input = &app->inputs[app->input_count];
+    h2g_text_input_init(&input->editor);
+    value = h2g_dom_attribute(node, "value", &len);
+    if (value == NULL) { value = ""; len = 0; }
+    if (!h2g_text_input_set(&input->editor, value, len))
+        return NULL;
+    input->node = node;
+    value = h2g_dom_attribute(node, "id", &len);
+    if (value != NULL) {
+        if (len >= sizeof(input->id)) len = sizeof(input->id) - 1;
+        memcpy(input->id, value, len);
+        input->id[len] = '\0';
+    }
+    app->input_count++;
+    return input;
 }
 
 static const char *choose_font(void)
@@ -588,7 +656,8 @@ static float layout_node(H2GApp *app, const H2GDomNode *node,
 {
     H2GStyle s;
     const H2GDomNode *child;
-    H2GOp *background=NULL, *button=NULL;
+    H2GOp *background=NULL, *button=NULL, *hit=NULL;
+    H2GInput *input=NULL;
     size_t len;
     const char *text, *id;
     float outer_x,outer_y,box_w,inner_w,inner_y,used=0,ch,content_h;
@@ -642,10 +711,42 @@ static float layout_node(H2GApp *app, const H2GDomNode *node,
         h2g_dom_text_content_free(node,text);
         if (used<=0) used=(float)(s.size+5);
     } else if (tag_is(node,"input")) {
-        text=h2g_dom_attribute(node,"placeholder",&len);
-        if (!text) text=h2g_dom_attribute(node,"value",&len);
-        if (text) used=layout_text(app,text,len,outer_x+s.padding,inner_y,
-                                   inner_w,&s);
+        if (editable_input(node))
+            input=get_input(app,node);
+        if (input != NULL) {
+            if (input->editor.length > 0) {
+                used=add_line(app,input->editor.text,outer_x+s.padding,
+                              inner_y,&s);
+            } else {
+                H2GStyle placeholder=s;
+                placeholder.fg=color(125,138,157,255);
+                text=h2g_dom_attribute(node,"placeholder",&len);
+                if (text != NULL)
+                    used=layout_text(app,text,len,outer_x+s.padding,
+                                     inner_y,inner_w,&placeholder);
+            }
+            if (app->focused_input == input) {
+                TTF_Font *font=get_font(app,s.size,s.bold);
+                int width=0, height=0;
+                H2GOp *caret;
+                if (font != NULL && input->editor.cursor > 0)
+                    (void)TTF_GetStringSize(font,input->editor.text,
+                           input->editor.cursor,&width,&height);
+                caret=add_op(app,1);
+                if (caret != NULL) {
+                    caret->rect.x=outer_x+s.padding+(float)width;
+                    caret->rect.y=inner_y+2;
+                    caret->rect.w=2;
+                    caret->rect.h=(float)s.size+2;
+                    caret->color=color(37,99,235,255);
+                }
+            }
+        } else {
+            text=h2g_dom_attribute(node,"placeholder",&len);
+            if (!text) text=h2g_dom_attribute(node,"value",&len);
+            if (text) used=layout_text(app,text,len,outer_x+s.padding,
+                                       inner_y,inner_w,&s);
+        }
         if (used<=0) used=(float)(s.size+5);
     } else if (s.display==3) {
         int cols = s.grid_columns > 0 ? s.grid_columns : 1;
@@ -732,6 +833,15 @@ static float layout_node(H2GApp *app, const H2GDomNode *node,
             }
         }
     }
+    if (input != NULL &&
+        h2g_dom_attribute(node, "disabled", NULL) == NULL) {
+        hit=add_op(app,4);
+        if (hit != NULL) {
+            hit->rect.x=outer_x; hit->rect.y=outer_y;
+            hit->rect.w=box_w; hit->rect.h=content_h;
+            hit->input=input;
+        }
+    }
     if (s.position==1 || s.position==2) return 0;
     return content_h+2*s.margin;
 }
@@ -779,7 +889,7 @@ static void draw(H2GApp *app)
     SDL_SetRenderDrawBlendMode(app->renderer,SDL_BLENDMODE_BLEND);
     for (i=0;i<app->op_count;i++) {
         op=&app->ops[i];
-        if (op->type==3) continue;
+        if (op->type==3 || op->type==4) continue;
         dest=op->rect;
         dest.y-=app->scroll;
         if (dest.y+dest.h<0 || dest.y>app->viewport_h) continue;
@@ -809,26 +919,98 @@ static void draw(H2GApp *app)
     SDL_RenderPresent(app->renderer);
 }
 
-static void click(H2GApp *app, float x, float y)
+static void notify_input(H2GApp *app, H2GInput *input)
+{
+    if (app->on_input != NULL)
+        app->on_input(input->id, input->editor.text, app->callback_user);
+}
+
+static int focus_input(H2GApp *app, H2GInput *input)
+{
+    if (app->focused_input == input) return 0;
+    if (app->focused_input != NULL)
+        (void)SDL_StopTextInput(app->window);
+    app->focused_input=input;
+    if (input != NULL)
+        (void)SDL_StartTextInput(app->window);
+    return 1;
+}
+
+static int focus_next_input(H2GApp *app, int backwards)
+{
+    int i;
+    if (app->input_count == 0) return 0;
+    if (app->focused_input == NULL) {
+        i=backwards ? app->input_count-1 : 0;
+    } else {
+        i=(int)(app->focused_input-app->inputs);
+        i=backwards ? (i+app->input_count-1)%app->input_count :
+                      (i+1)%app->input_count;
+    }
+    return focus_input(app,&app->inputs[i]);
+}
+
+static int click(H2GApp *app, float x, float y)
 {
     int i;
     H2GOp *op;
     y+=app->scroll;
     for (i=app->op_count-1;i>=0;i--) {
         op=&app->ops[i];
-        if (op->type==3 &&
+        if ((op->type==3 || op->type==4) &&
             x>=op->rect.x && x<op->rect.x+op->rect.w &&
             y>=op->rect.y && y<op->rect.y+op->rect.h) {
+            if (op->type==4) {
+                if (op->input != NULL)
+                    h2g_text_input_end(&op->input->editor);
+                return focus_input(app,op->input);
+            }
+            (void)focus_input(app,NULL);
             if (app->on_button != NULL) {
-                app->on_button(op->id, app->button_user);
+                app->on_button(op->id, app->callback_user);
             } else {
                 printf("html2gui: button clicked id=%s\n",
                        op->id[0] ? op->id : "(unnamed)");
                 fflush(stdout);
             }
-            return;
+            return 1;
         }
     }
+    return focus_input(app,NULL);
+}
+
+static int handle_text_key(H2GApp *app, SDL_Keycode key)
+{
+    H2GInput *input=app->focused_input;
+    int changed=0, moved=0;
+    if (input == NULL) return 0;
+    if (key == SDLK_BACKSPACE)
+        changed=h2g_text_input_backspace(&input->editor);
+    else if (key == SDLK_DELETE)
+        changed=h2g_text_input_delete(&input->editor);
+    else if (key == SDLK_LEFT)
+        moved=h2g_text_input_left(&input->editor);
+    else if (key == SDLK_RIGHT)
+        moved=h2g_text_input_right(&input->editor);
+    else if (key == SDLK_HOME) {
+        h2g_text_input_home(&input->editor);
+        moved=1;
+    } else if (key == SDLK_END) {
+        h2g_text_input_end(&input->editor);
+        moved=1;
+    }
+    if (changed) notify_input(app,input);
+    return changed || moved;
+}
+
+static int handle_text_insert(H2GApp *app, const char *text)
+{
+    H2GInput *input=app->focused_input;
+    if (input == NULL || text == NULL) return 0;
+    if (!h2g_text_input_insert(&input->editor,text,strlen(text)))
+        return 0;
+    notify_input(app,input);
+    return 1;
 }
 
 static int add_css(H2GApp *app, const char *data, size_t length)
@@ -866,8 +1048,9 @@ static void scan_styles(H2GApp *app, const H2GDomNode *node, int depth)
         scan_styles(app,child,depth+1);
 }
 
-int h2g_renderer_run(const char *html_path, const char *css_path,
-                     int headless, H2GButtonCallback on_button, void *user)
+int h2g_renderer_run_ex(const char *html_path, const char *css_path,
+                        int headless, H2GButtonCallback on_button,
+                        H2GInputCallback on_input, void *user)
 {
     H2GApp app;
     SDL_Event ev;
@@ -877,7 +1060,8 @@ int h2g_renderer_run(const char *html_path, const char *css_path,
     float high;
     memset(&app,0,sizeof(app));
     app.on_button=on_button;
-    app.button_user=user;
+    app.on_input=on_input;
+    app.callback_user=user;
     if (html_path==NULL) {
         fprintf(stderr,"html2gui: HTML path is required\n");
         return 2;
@@ -891,6 +1075,11 @@ int h2g_renderer_run(const char *html_path, const char *css_path,
     app.vars=(H2GVariable *)calloc(H2G_MAX_VARS,sizeof(H2GVariable));
     if (app.vars == NULL) {
         fprintf(stderr,"out of memory allocating CSS variables\n");
+        return 1;
+    }
+    app.inputs=(H2GInput *)calloc(H2G_MAX_INPUTS,sizeof(H2GInput));
+    if (app.inputs == NULL) {
+        fprintf(stderr,"out of memory allocating input states\n");
         return 1;
     }
     scan_styles(&app,h2g_html_head(app.html),0);
@@ -952,6 +1141,25 @@ int h2g_renderer_run(const char *html_path, const char *css_path,
             }
         }
     }
+    /* A controlled headless edit exercises the same click/edit dispatch
+     * as the SDL event path, without a window manager or keyboard.
+     */
+    if (headless && getenv("H2G_TEST_INPUT") != NULL) {
+        const char *target = getenv("H2G_TEST_INPUT");
+        const char *text = getenv("H2G_TEST_TEXT");
+        for (i=0;i<app.op_count;i++) {
+            H2GOp *op=&app.ops[i];
+            if (op->type==4 && op->input != NULL &&
+                strcmp(op->input->id,target)==0) {
+                (void)click(&app,op->rect.x+op->rect.w*0.5f,
+                            op->rect.y+op->rect.h*0.5f-app.scroll);
+                if (text != NULL) (void)handle_text_insert(&app,text);
+                rebuild(&app);
+                draw(&app);
+                break;
+            }
+        }
+    }
     if (!headless) while (again && SDL_WaitEvent(&ev)) {
         if (ev.type==SDL_EVENT_QUIT) again=0;
         else if (ev.type==SDL_EVENT_WINDOW_RESIZED) {
@@ -965,9 +1173,29 @@ int h2g_renderer_run(const char *html_path, const char *css_path,
             if (app.scroll>high) app.scroll=high;
             draw(&app);
         } else if (ev.type==SDL_EVENT_MOUSE_BUTTON_DOWN) {
-            click(&app,ev.button.x,ev.button.y);
+            if (click(&app,ev.button.x,ev.button.y))
+                rebuild(&app);
+            draw(&app);
+        } else if (ev.type==SDL_EVENT_TEXT_INPUT) {
+            if (handle_text_insert(&app,ev.text.text)) {
+                rebuild(&app);
+                draw(&app);
+            }
         } else if (ev.type==SDL_EVENT_KEY_DOWN) {
-            if (ev.key.key==SDLK_ESCAPE) again=0;
+            int redraw=0;
+            if (ev.key.key==SDLK_ESCAPE) {
+                if (app.focused_input != NULL)
+                    redraw=focus_input(&app,NULL);
+                else again=0;
+            } else if (ev.key.key==SDLK_TAB) {
+                redraw=focus_next_input(&app,
+                         (ev.key.mod & SDL_KMOD_SHIFT) != 0);
+            } else if (ev.key.key==SDLK_RETURN ||
+                       ev.key.key==SDLK_KP_ENTER) {
+                redraw=focus_input(&app,NULL);
+            } else {
+                redraw=handle_text_key(&app,ev.key.key);
+            }
             if (ev.key.key==SDLK_PAGEDOWN) {
                 app.scroll+=app.viewport_h*.8f;
                 if (app.scroll>app.document_h-app.viewport_h)
@@ -979,8 +1207,14 @@ int h2g_renderer_run(const char *html_path, const char *css_path,
                 if (app.scroll<0) app.scroll=0;
                 draw(&app);
             }
+            if (redraw) {
+                rebuild(&app);
+                draw(&app);
+            }
         } else if (ev.type==SDL_EVENT_WINDOW_EXPOSED) draw(&app);
     }
+    if (app.focused_input != NULL)
+        (void)SDL_StopTextInput(app.window);
     clear_ops(&app);
     free(app.ops);
     for (i=0;i<app.font_count;i++) TTF_CloseFont(app.fonts[i].font);
@@ -994,6 +1228,16 @@ int h2g_renderer_run(const char *html_path, const char *css_path,
         free(app.vars[i].value);
     }
     free(app.vars);
+    for (i=0;i<app.input_count;i++)
+        h2g_text_input_destroy(&app.inputs[i].editor);
+    free(app.inputs);
     h2g_html_destroy(app.html);
     return 0;
+}
+
+int h2g_renderer_run(const char *html_path, const char *css_path,
+                     int headless, H2GButtonCallback on_button, void *user)
+{
+    return h2g_renderer_run_ex(html_path,css_path,headless,on_button,
+                               NULL,user);
 }

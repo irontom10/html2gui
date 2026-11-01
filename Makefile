@@ -30,11 +30,14 @@ $(BUILD)/h2g-parse: tools/h2g_parse.c $(BUILD)/libhtml2gui-parser.a
 $(BUILD)/parser-smoke: tests/parser_smoke.c $(BUILD)/libhtml2gui-parser.a
 	$(CC) $(CPPFLAGS) $(INCLUDES) $(CFLAGS) $(C89_WARN) $< $(BUILD)/libhtml2gui-parser.a $(LEXBOR_LIBS) -o $@
 
-$(BUILD)/h2g_sdl.o: src/h2g_sdl.c include/html2gui/parser.h include/html2gui/renderer.h | $(BUILD)
-	$(CC) $(CPPFLAGS) $(INCLUDES) $(SDL_CFLAGS) $(CFLAGS) $(C89_WARN) -c $< -o $@
+$(BUILD)/h2g_sdl.o: src/h2g_sdl.c src/h2g_text_input.h include/html2gui/parser.h include/html2gui/renderer.h | $(BUILD)
+	$(CC) $(CPPFLAGS) $(INCLUDES) $(SDL_CFLAGS) $(CFLAGS) $(C89_WARN) -Isrc -c $< -o $@
 
-$(BUILD)/libhtml2gui-renderer.a: $(BUILD)/h2g_sdl.o
-	$(AR) rcs $@ $<
+$(BUILD)/h2g_text_input.o: src/h2g_text_input.c src/h2g_text_input.h | $(BUILD)
+	$(CC) $(CPPFLAGS) $(INCLUDES) $(CFLAGS) $(C89_WARN) -Isrc -c $< -o $@
+
+$(BUILD)/libhtml2gui-renderer.a: $(BUILD)/h2g_sdl.o $(BUILD)/h2g_text_input.o
+	$(AR) rcs $@ $^
 
 $(BUILD)/h2g-render: tools/h2g_render.c $(BUILD)/libhtml2gui-renderer.a $(BUILD)/libhtml2gui-parser.a
 	$(CC) $(CPPFLAGS) $(INCLUDES) $(SDL_CFLAGS) $(CFLAGS) $(C89_WARN) $< $(BUILD)/libhtml2gui-renderer.a $(BUILD)/libhtml2gui-parser.a $(LEXBOR_LIBS) $(SDL_LIBS) -lm -o $@
@@ -47,8 +50,15 @@ $(BUILD)/native-example: examples/native_callbacks.c $(BUILD)/libhtml2gui-render
 
 render: $(BUILD)/h2g-render
 
-test: $(BUILD)/parser-smoke
+$(BUILD)/text-input-smoke: tests/text_input_smoke.c $(BUILD)/h2g_text_input.o
+	$(CC) $(CPPFLAGS) $(INCLUDES) $(CFLAGS) $(C89_WARN) -Isrc $< $(BUILD)/h2g_text_input.o -o $@
+
+$(BUILD)/native-input-smoke: tests/native_input_smoke.c $(BUILD)/libhtml2gui-renderer.a $(BUILD)/libhtml2gui-parser.a
+	$(CC) $(CPPFLAGS) $(INCLUDES) $(SDL_CFLAGS) $(CFLAGS) $(C89_WARN) $< $(BUILD)/libhtml2gui-renderer.a $(BUILD)/libhtml2gui-parser.a $(LEXBOR_LIBS) $(SDL_LIBS) -lm -o $@
+
+test: $(BUILD)/parser-smoke $(BUILD)/text-input-smoke
 	./$(BUILD)/parser-smoke
+	./$(BUILD)/text-input-smoke
 
 renderer-test: render
 	./$(BUILD)/h2g-render --headless examples/basic.html examples/basic.css
@@ -56,6 +66,10 @@ renderer-test: render
 .PHONY: native-callback-test
 native-callback-test: $(BUILD)/native-callback-smoke
 	H2G_TEST_CLICK=hello ./$(BUILD)/native-callback-smoke
+
+.PHONY: native-input-test
+native-input-test: $(BUILD)/native-input-smoke
+	H2G_TEST_INPUT=name H2G_TEST_TEXT=abc ./$(BUILD)/native-input-smoke
 
 .PHONY: native-example
 native-example: $(BUILD)/native-example

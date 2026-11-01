@@ -32,10 +32,18 @@ static void on_button(const char *id, void *user)
         second_action(state);
 }
 
+static void on_input(const char *id, const char *text, void *user)
+{
+    AppState *state = (AppState *)user;
+    (void)state;
+    if (strcmp(id, "name") == 0)
+        printf("Native text changed: %s\n", text);
+}
+
 int main(void)
 {
     AppState state;
     state.hello_clicks = 0;
-    return h2g_renderer_run("examples/basic.html", "examples/basic.css",
-                            0, on_button, &state);
+    return h2g_renderer_run_ex("examples/basic.html", "examples/basic.css",
+                               0, on_button, on_input, &state);
 }

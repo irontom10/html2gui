@@ -53,8 +53,10 @@ The CLI demo prints clicked button IDs to stdout; embedders can register a nativ
 The public parser API is in include/html2gui/parser.h. A reusable
 `build/libhtml2gui-renderer.a` also exposes `h2g_renderer_run` in
 `include/html2gui/renderer.h`. Pass a plain C function and context pointer to
-receive native button clicks by HTML `id`. The function owns the SDL event
-loop, does not execute JavaScript, and accepts an optional compiled CSS file.
+receive native button clicks by HTML `id`. Use `h2g_renderer_run_ex` to
+register a second C callback for UTF-8 changes in single-line text inputs.
+The function owns the SDL event loop, does not execute JavaScript, and accepts
+an optional compiled CSS file.
 
 ```c
 #include "html2gui/renderer.h"
@@ -75,11 +77,30 @@ int main(void)
 }
 ```
 
+Input event example (for `<input id="name" type="text">`):
+
+```c
+static void on_input(const char *id, const char *value, void *user)
+{
+    (void)user;
+    printf("input %s = %s\n", id, value);
+}
+/* Call h2g_renderer_run_ex(html, css, 0, on_button, on_input, user). */
+```
+
+Use SDL3's committed UTF-8 text events, not raw keycodes, for characters.
+The editor supports Backspace, Delete, arrows, Home/End, click-to-focus,
+Tab between text inputs, Enter/Escape to blur, and preserves edits on resize.
+Only enabled, writable, text-like inputs are editable. Each field is limited
+to 4096 UTF-8 bytes; grapheme clusters, horizontal
+text scrolling, selection and IME preedit display remain future work.
+
 Link with `-lhtml2gui-renderer -lhtml2gui-parser` followed by Lexbor,
 SDL3, SDL3_ttf and `-lm`. A complete two-button program is in
 `examples/native_callbacks.c`; build and launch it with `make native-example`
-then `./build/native-example`. Use `make native-callback-test` for the
-headless synthetic click regression test.
+then `./build/native-example`. Use `make native-callback-test`
+and `make native-input-test` for headless native event regression tests.
+The pure C89 UTF-8 buffer also runs under `make test`.
 
 The only C99
 translation unit is src/parser_lexbor.c, because Lexbor's headers require C99;
@@ -91,8 +112,10 @@ all other html2gui code compiles with -std=c89 -pedantic -Werror.
 backgrounds, text colors, margin and padding (one uniform value), font sizes
 and weights, simple fixed-width and max-width boxes, basic equal-width flex
 rows and grid tracks, `position:absolute` elements kept out of normal flow,
-clipped screen-reader-only content, buttons with hit testing, scrolling,
-resize reflow and embedded `<style>` plus an optional external CSS file.
+clipped screen-reader-only content, buttons with hit testing, editable
+single-line text inputs with UTF-8 cursor movement, click/Tab focus, native
+C change callbacks, scrolling, resize reflow and embedded `<style>` plus
+an optional external CSS file.
 Theme variables and a narrow subset of `calc(var(...) * multiplier)` work.
 Selected single-width viewport `@media` rules are handled at top level, inside `@layer`, and inside style rules; unsupported media queries are ignored.
 
@@ -101,7 +124,9 @@ algorithms; block margin collapsing; full normal flow and positioning;
 complete cascade origins/layers and inheritance, general `@media`/`@supports`
 queries, general custom-property inheritance/resolution and CSS math;
 inline styles, transforms, gradients, shadows, blur, images/SVG, rounded
-corners, accessible widget state, focus, IME, keyboard input widgets,
+corners, comprehensive accessible widget state, proper focus rings and
+keyboard navigation across all controls, IME preedit rendering, multiline
+text areas, password/numeric/checkbox controls, text selection, copy/paste,
 JavaScript or network navigation.
 
 Lexbor *parsing* CSS is not the same as supporting every parsed property

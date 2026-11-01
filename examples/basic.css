@@ -6,4 +6,7 @@
 .panel p { color: #475569; }
 .actions { display: flex; gap: 16px; }
 .actions button { background-color: #2563eb; padding: 14px; color: #ffffff; }
+.field { margin: 12px; padding: 10px; background-color: #e2e8f0; }
+.field input { background-color: #ffffff; padding: 12px; margin: 8px; width: 320px; }
+.field label { color: #334155; }
 .hint { font-size: 14px; }
