@@ -1272,6 +1272,7 @@ int h2g_renderer_run_ex(const char *html_path, const char *css_path,
             if (op->type==4 && op->input != NULL &&
                 strcmp(op->input->id,"long")==0) {
                 H2GInput *input=op->input;
+                size_t old_start;
                 TTF_Font *font=get_font(&app,input->font_size,
                                         input->font_bold);
                 int width=h2g_input_width(font,
@@ -1282,6 +1283,25 @@ int h2g_renderer_run_ex(const char *html_path, const char *css_path,
                     input->view_end>=input->editor.length ||
                     width>room) {
                     fprintf(stderr,"html2gui: INPUT VIEWPORT VERIFY FAIL\n");
+                    return 1;
+                }
+                /* Focusing the long field must show its trailing text.
+                 * Moving one codepoint left of the viewport must shift the
+                 * viewport locally, not jump all the way to byte zero.
+                 */
+                (void)focus_input(&app,input);
+                rebuild(&app);
+                old_start=input->view_start;
+                if (old_start<=1) {
+                    fprintf(stderr,"html2gui: INPUT SCROLL INIT FAIL\n");
+                    return 1;
+                }
+                input->editor.cursor=h2g_input_prev(input->editor.text,
+                                                     old_start);
+                rebuild(&app);
+                if (input->view_start!=input->editor.cursor ||
+                    input->view_start==0) {
+                    fprintf(stderr,"html2gui: INPUT SCROLL LEFT FAIL\n");
                     return 1;
                 }
                 verified=1;
