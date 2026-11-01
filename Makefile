@@ -75,6 +75,10 @@ native-input-test: $(BUILD)/native-input-smoke
 native-input-click-test: $(BUILD)/native-input-smoke
 	H2G_TEST_INPUT=name H2G_TEST_TEXT=abc H2G_TEST_INPUT_X=0.01 ./$(BUILD)/native-input-smoke
 
+.PHONY: native-input-viewport-test
+native-input-viewport-test: render
+	H2G_TEST_INPUT_VIEW=1 ./$(BUILD)/h2g-render --headless examples/basic.html examples/basic.css
+
 .PHONY: native-example
 native-example: $(BUILD)/native-example
 
