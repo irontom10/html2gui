@@ -91,6 +91,8 @@ static void count_matches(const char *name, const char *value,
     CountMatches *count = (CountMatches *)user;
     (void)specificity; (void)important; (void)order;
     count->count++;
+    if (name[0] == '-' && name[1] == '-')
+        fprintf(stderr,"root custom: %s = %.100s\\n",name,value);
     if (strcmp(name,"background-color")==0 && value[0] != '\0')
         count->background++;
     if (strcmp(name,"--color-slate-950")==0 && strstr(value,"oklch")!=NULL)
@@ -143,6 +145,9 @@ static int test_tailwind_root_variables(void)
     CHECK(root != NULL);
     count.count=0; count.background=0; count.variables=0;
     CHECK(h2g_css_visit_matching(sheet,root,count_matches,&count));
+    fprintf(stderr,"root matched declarations=%d, variables=%d, indexed=%lu\\n",
+            count.count,count.variables,
+            (unsigned long)h2g_css_indexed_style_rule_count(sheet));
     CHECK(count.variables==1);
     h2g_css_destroy(sheet);
     h2g_html_destroy(doc);
