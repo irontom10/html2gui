@@ -473,6 +473,7 @@ static float add_line(H2GApp *app, const char *line,
                 op->texture=SDL_CreateTextureFromSurface(app->renderer,surface);
                 SDL_DestroySurface(surface);
             }
+            op->color=s->fg;
             op->rect.x=x; op->rect.y=y;
             op->rect.w=(float)w; op->rect.h=(float)h;
         }
@@ -563,6 +564,14 @@ static float layout_node(H2GApp *app, const H2GDomNode *node,
         return 0;
     s=style_for(app,node,parent);
     if (s.display==1) return 0;
+    if (getenv("H2G_DUMP_LAYOUT") != NULL &&
+        (tag_is(node,"h1") || tag_is(node,"main") ||
+         tag_is(node,"header") || tag_is(node,"aside"))) {
+        size_t tag_len;
+        const char *tag = h2g_dom_element_name(node,&tag_len);
+        fprintf(stderr,"H2G_LAYOUT %.*s depth=%d x=%.0f y=%.0f avail=%.0f pad=%.0f gap=%.0f size=%d display=%d\n",
+            (int)tag_len,tag,depth,x,y,available,s.padding,s.gap,s.size,s.display);
+    }
     if (s.padding<0) s.padding=0;
     if (s.margin<0) s.margin=0;
     if (s.gap<0) s.gap=0;
@@ -665,6 +674,18 @@ static void rebuild(H2GApp *app)
     fprintf(stderr,"html2gui: viewport=%dx%d ops=%d document=%.0f vars=%d dark-bg=%d%s\n",
       app->viewport_w,app->viewport_h,app->op_count,app->document_h,
       app->var_count,app->dark_backgrounds,app->overflow?" (paint buffer exhausted)":"");
+    if (getenv("H2G_DUMP_LAYOUT") != NULL) {
+        int i, printed = 0;
+        for (i=0; i<app->op_count && printed<75; i++) {
+            const H2GOp *op=&app->ops[i];
+            if (op->type!=2) continue;
+            fprintf(stderr,"H2G_TEXT x=%.0f y=%.0f w=%.0f h=%.0f rgba=%u,%u,%u,%u\n",
+              op->rect.x,op->rect.y,op->rect.w,op->rect.h,
+              (unsigned)op->color.r,(unsigned)op->color.g,
+              (unsigned)op->color.b,(unsigned)op->color.a);
+            printed++;
+        }
+    }
 }
 
 static void draw(H2GApp *app)
