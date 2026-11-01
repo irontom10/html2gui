@@ -83,7 +83,7 @@ static int test_css(void)
 }
 
 
-typedef struct CountMatches { int count; int background; } CountMatches;
+typedef struct CountMatches { int count; int background; int variables; } CountMatches;
 
 static void count_matches(const char *name, const char *value,
     unsigned long specificity, int important, unsigned long order, void *user)
@@ -93,6 +93,8 @@ static void count_matches(const char *name, const char *value,
     count->count++;
     if (strcmp(name,"background-color")==0 && value[0] != '\0')
         count->background++;
+    if (strcmp(name,"--color-slate-950")==0 && strstr(value,"oklch")!=NULL)
+        count->variables++;
 }
 
 static int test_nested_css(void)
@@ -114,9 +116,34 @@ static int test_nested_css(void)
     CHECK(h2g_css_indexed_style_rule_count(sheet) >= 3);
     div=find_element(h2g_html_body(doc),"div");
     CHECK(div != NULL);
-    count.count=0; count.background=0;
+    count.count=0; count.background=0; count.variables=0;
     CHECK(h2g_css_visit_matching(sheet,div,count_matches,&count));
     CHECK(count.background==1);
+    h2g_css_destroy(sheet);
+    h2g_html_destroy(doc);
+    return 0;
+}
+
+
+static int test_tailwind_root_variables(void)
+{
+    static const char markup[] =
+        "<!doctype html><html><head></head><body><div>content</div></body></html>";
+    static const char css[] =
+        "@layer theme { :root, :host {"
+        " --color-slate-950: oklch(12.9% 0.042 264.695);"
+        " --spacing: 0.25rem;"
+        " } }";
+    H2GHtmlDocument *doc = h2g_html_parse(markup, sizeof(markup)-1);
+    H2GCssStylesheet *sheet = h2g_css_parse(css, sizeof(css)-1);
+    const H2GDomNode *root;
+    CountMatches count;
+    CHECK(doc != NULL && sheet != NULL);
+    root = h2g_dom_parent(h2g_html_head(doc));
+    CHECK(root != NULL);
+    count.count=0; count.background=0; count.variables=0;
+    CHECK(h2g_css_visit_matching(sheet,root,count_matches,&count));
+    CHECK(count.variables==1);
     h2g_css_destroy(sheet);
     h2g_html_destroy(doc);
     return 0;
@@ -127,6 +154,7 @@ int main(void)
     CHECK(test_html() == 0);
     CHECK(test_css() == 0);
     CHECK(test_nested_css() == 0);
+    CHECK(test_tailwind_root_variables() == 0);
     puts("parser smoke tests: PASS");
     return 0;
 }
