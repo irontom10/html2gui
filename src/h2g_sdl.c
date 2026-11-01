@@ -282,7 +282,7 @@ static int parse_color(const char *v, H2GColor *out)
     if (n == 4 && v[0] == '#' && isxdigit((unsigned char)v[1]) &&
         isxdigit((unsigned char)v[2]) && isxdigit((unsigned char)v[3])) {
         char mini[3];
-        mini[2] = ' ';
+        mini[2] = '\0';
         mini[0] = v[1]; mini[1] = v[1]; r = (unsigned int)strtoul(mini,NULL,16);
         mini[0] = v[2]; mini[1] = v[2]; g = (unsigned int)strtoul(mini,NULL,16);
         mini[0] = v[3]; mini[1] = v[3]; b = (unsigned int)strtoul(mini,NULL,16);
