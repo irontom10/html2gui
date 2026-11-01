@@ -102,7 +102,8 @@ Link with `-lhtml2gui-renderer -lhtml2gui-parser` followed by Lexbor,
 SDL3, SDL3_ttf and `-lm`. A complete two-button program is in
 `examples/native_callbacks.c`; build and launch it with `make native-example`
 then `./build/native-example`. Use `make native-callback-test`, `make native-input-test` and
-`make native-input-click-test` for headless native event regression tests.
+`make native-input-click-test` and `make native-input-viewport-test` for
+headless input-event and visible-geometry regression tests.
 The pure C89 UTF-8 buffer also runs under `make test`.
 
 The only C99
