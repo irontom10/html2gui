@@ -1043,8 +1043,9 @@ static void scan_styles(H2GApp *app, const H2GDomNode *node, int depth)
         scan_styles(app,child,depth+1);
 }
 
-int h2g_renderer_run(const char *html_path, const char *css_path,
-                     int headless, H2GButtonCallback on_button, void *user)
+int h2g_renderer_run_ex(const char *html_path, const char *css_path,
+                        int headless, H2GButtonCallback on_button,
+                        H2GInputCallback on_input, void *user)
 {
     H2GApp app;
     SDL_Event ev;
@@ -1054,7 +1055,8 @@ int h2g_renderer_run(const char *html_path, const char *css_path,
     float high;
     memset(&app,0,sizeof(app));
     app.on_button=on_button;
-    app.button_user=user;
+    app.on_input=on_input;
+    app.callback_user=user;
     if (html_path==NULL) {
         fprintf(stderr,"html2gui: HTML path is required\n");
         return 2;
@@ -1068,6 +1070,11 @@ int h2g_renderer_run(const char *html_path, const char *css_path,
     app.vars=(H2GVariable *)calloc(H2G_MAX_VARS,sizeof(H2GVariable));
     if (app.vars == NULL) {
         fprintf(stderr,"out of memory allocating CSS variables\n");
+        return 1;
+    }
+    app.inputs=(H2GInput *)calloc(H2G_MAX_INPUTS,sizeof(H2GInput));
+    if (app.inputs == NULL) {
+        fprintf(stderr,"out of memory allocating input states\n");
         return 1;
     }
     scan_styles(&app,h2g_html_head(app.html),0);
@@ -1129,6 +1136,25 @@ int h2g_renderer_run(const char *html_path, const char *css_path,
             }
         }
     }
+    /* A controlled headless edit exercises the same click/edit dispatch
+     * as the SDL event path, without a window manager or keyboard.
+     */
+    if (headless && getenv("H2G_TEST_INPUT") != NULL) {
+        const char *target = getenv("H2G_TEST_INPUT");
+        const char *text = getenv("H2G_TEST_TEXT");
+        for (i=0;i<app.op_count;i++) {
+            H2GOp *op=&app.ops[i];
+            if (op->type==4 && op->input != NULL &&
+                strcmp(op->input->id,target)==0) {
+                (void)click(&app,op->rect.x+op->rect.w*0.5f,
+                            op->rect.y+op->rect.h*0.5f-app.scroll);
+                if (text != NULL) (void)handle_text_insert(&app,text);
+                rebuild(&app);
+                draw(&app);
+                break;
+            }
+        }
+    }
     if (!headless) while (again && SDL_WaitEvent(&ev)) {
         if (ev.type==SDL_EVENT_QUIT) again=0;
         else if (ev.type==SDL_EVENT_WINDOW_RESIZED) {
@@ -1142,9 +1168,29 @@ int h2g_renderer_run(const char *html_path, const char *css_path,
             if (app.scroll>high) app.scroll=high;
             draw(&app);
         } else if (ev.type==SDL_EVENT_MOUSE_BUTTON_DOWN) {
-            click(&app,ev.button.x,ev.button.y);
+            if (click(&app,ev.button.x,ev.button.y))
+                rebuild(&app);
+            draw(&app);
+        } else if (ev.type==SDL_EVENT_TEXT_INPUT) {
+            if (handle_text_insert(&app,ev.text.text)) {
+                rebuild(&app);
+                draw(&app);
+            }
         } else if (ev.type==SDL_EVENT_KEY_DOWN) {
-            if (ev.key.key==SDLK_ESCAPE) again=0;
+            int redraw=0;
+            if (ev.key.key==SDLK_ESCAPE) {
+                if (app.focused_input != NULL)
+                    redraw=focus_input(&app,NULL);
+                else again=0;
+            } else if (ev.key.key==SDLK_TAB) {
+                redraw=focus_next_input(&app,
+                         (ev.key.mod & SDL_KMOD_SHIFT) != 0);
+            } else if (ev.key.key==SDLK_RETURN ||
+                       ev.key.key==SDLK_KP_ENTER) {
+                redraw=focus_input(&app,NULL);
+            } else {
+                redraw=handle_text_key(&app,ev.key.key);
+            }
             if (ev.key.key==SDLK_PAGEDOWN) {
                 app.scroll+=app.viewport_h*.8f;
                 if (app.scroll>app.document_h-app.viewport_h)
@@ -1156,8 +1202,14 @@ int h2g_renderer_run(const char *html_path, const char *css_path,
                 if (app.scroll<0) app.scroll=0;
                 draw(&app);
             }
+            if (redraw) {
+                rebuild(&app);
+                draw(&app);
+            }
         } else if (ev.type==SDL_EVENT_WINDOW_EXPOSED) draw(&app);
     }
+    if (app.focused_input != NULL)
+        (void)SDL_StopTextInput(app.window);
     clear_ops(&app);
     free(app.ops);
     for (i=0;i<app.font_count;i++) TTF_CloseFont(app.fonts[i].font);
@@ -1171,6 +1223,16 @@ int h2g_renderer_run(const char *html_path, const char *css_path,
         free(app.vars[i].value);
     }
     free(app.vars);
+    for (i=0;i<app.input_count;i++)
+        h2g_text_input_destroy(&app.inputs[i].editor);
+    free(app.inputs);
     h2g_html_destroy(app.html);
     return 0;
+}
+
+int h2g_renderer_run(const char *html_path, const char *css_path,
+                     int headless, H2GButtonCallback on_button, void *user)
+{
+    return h2g_renderer_run_ex(html_path,css_path,headless,on_button,
+                               NULL,user);
 }
