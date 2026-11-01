@@ -43,7 +43,7 @@ renderer-test: render
 
 .PHONY: torture-test
 torture-test: render
-	timeout 90s env H2G_TORTURE_VERIFY=1 H2G_SCREENSHOT=$(BUILD)/torture.bmp ./$(BUILD)/h2g-render --headless examples/torture.html
+	timeout 90s env H2G_TORTURE_VERIFY=1 H2G_DUMP_LAYOUT=1 H2G_SCREENSHOT=$(BUILD)/torture.bmp ./$(BUILD)/h2g-render --headless examples/torture.html
 
 clean:
 	rm -rf $(BUILD)
