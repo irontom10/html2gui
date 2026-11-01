@@ -30,6 +30,7 @@ typedef struct H2GColor { unsigned char r, g, b, a; } H2GColor;
 typedef struct H2GStyle {
     H2GColor fg, bg;
     int size, bold, display, flex_column, position, clipped, grid_columns;
+    float grid_first_px;
     float margin, padding, gap, width, height, max_width;
     int specified[H2G_PROP_COUNT];
     int imp[H2G_PROP_COUNT];
@@ -66,6 +67,7 @@ typedef struct H2GApp {
     int op_count, overflow, viewport_w, viewport_h;
     int dark_backgrounds;
     float document_h, scroll, first_h1_y;
+    float metric1_x, metric1_y, metric2_x, metric2_y;
 } H2GApp;
 typedef struct H2GMatchApply {
     H2GStyle *style;
@@ -365,9 +367,17 @@ static void apply_declaration(const char *name, const char *value,
         break;
     case 18: {
         int count = 0;
+        float fixed = 0;
         if (sscanf(value,"repeat(%d",&count)==1 &&
-            count > 0 && count <= 12)
+            count > 0 && count <= 12) {
             style->grid_columns=count;
+            style->grid_first_px=0;
+        } else if (sscanf(value," %fpx",&fixed)==1 &&
+                   strstr(value,"minmax(")!=NULL &&
+                   fixed>0 && fixed<10000) {
+            style->grid_columns=2;
+            style->grid_first_px=fixed;
+        }
         break;
     }
     default: break;
@@ -594,6 +604,14 @@ static float layout_node(H2GApp *app, const H2GDomNode *node,
     if (s.gap<0) s.gap=0;
     outer_x=x+s.margin;
     outer_y=y+s.margin;
+    id = h2g_dom_attribute(node,"id",&len);
+    if (id != NULL) {
+        if (len==11 && memcmp(id,"class-count",11)==0) {
+            app->metric1_x=outer_x; app->metric1_y=outer_y;
+        } else if (len==13 && memcmp(id,"element-count",13)==0) {
+            app->metric2_x=outer_x; app->metric2_y=outer_y;
+        }
+    }
     if (tag_is(node,"h1") && app->first_h1_y < 0)
         app->first_h1_y=outer_y;
     box_w=available-2*s.margin;
@@ -630,14 +648,26 @@ static float layout_node(H2GApp *app, const H2GDomNode *node,
         int cols = s.grid_columns > 0 ? s.grid_columns : 1;
         int col = 0, rows = 0;
         float cell_w, row_max = 0, row_y = inner_y;
+        float child_w, child_x;
         cell_w = (inner_w - (cols - 1)*s.gap) / cols;
         if (cell_w < 20) cell_w = 20;
         for (child=h2g_dom_first_child(node); child;
              child=h2g_dom_next_sibling(child)) {
             if (h2g_dom_type(child)!=H2G_DOM_ELEMENT ||
                 ignored_element(child)) continue;
-            ch=layout_node(app,child,&s,outer_x+s.padding+
-                       col*(cell_w+s.gap),row_y,cell_w,depth+1);
+            child_w=cell_w;
+            child_x=outer_x+s.padding+col*(cell_w+s.gap);
+            if (cols == 2 && s.grid_first_px > 0) {
+                if (col == 0) {
+                    child_w=s.grid_first_px;
+                    child_x=outer_x+s.padding;
+                } else {
+                    child_w=inner_w-s.grid_first_px-s.gap;
+                    if (child_w<20) child_w=20;
+                    child_x=outer_x+s.padding+s.grid_first_px+s.gap;
+                }
+            }
+            ch=layout_node(app,child,&s,child_x,row_y,child_w,depth+1);
             if (ch > row_max) row_max = ch;
             col++;
             if (col == cols) {
@@ -706,6 +736,8 @@ static void rebuild(H2GApp *app)
     const H2GDomNode *body=h2g_html_body(app->html);
     clear_ops(app);
     app->first_h1_y=-1;
+    app->metric1_x=-1; app->metric1_y=-1;
+    app->metric2_x=-1; app->metric2_y=-1;
     memset(&initial,0,sizeof(initial));
     initial.size=16;
     initial.fg=color(22,32,47,255);
@@ -716,9 +748,11 @@ static void rebuild(H2GApp *app)
         (float)app->viewport_h;
     if (app->scroll>app->document_h-app->viewport_h)
         app->scroll=app->document_h-app->viewport_h;
-    fprintf(stderr,"html2gui: viewport=%dx%d ops=%d document=%.0f vars=%d dark-bg=%d h1-y=%.0f%s\n",
+    fprintf(stderr,"html2gui: viewport=%dx%d ops=%d document=%.0f vars=%d dark-bg=%d h1-y=%.0f metric1=(%.0f,%.0f) metric2=(%.0f,%.0f)%s\n",
       app->viewport_w,app->viewport_h,app->op_count,app->document_h,
-      app->var_count,app->dark_backgrounds,app->first_h1_y,app->overflow?" (paint buffer exhausted)":"");
+      app->var_count,app->dark_backgrounds,app->first_h1_y,
+      app->metric1_x,app->metric1_y,app->metric2_x,app->metric2_y,
+      app->overflow?" (paint buffer exhausted)":"");
     if (getenv("H2G_DUMP_LAYOUT") != NULL) {
         int i, printed = 0;
         for (i=0; i<app->op_count && printed<75; i++) {
@@ -897,6 +931,10 @@ int main(int argc, char **argv)
         if (app.op_count < 1000 || app.document_h < 10000 ||
             app.var_count < 100 || app.dark_backgrounds < 100 ||
             app.first_h1_y < 0 || app.first_h1_y >= app.viewport_h ||
+            app.metric1_x < 0 || app.metric2_x <= app.metric1_x ||
+            app.metric1_y < 0 ||
+            (app.metric2_y - app.metric1_y > 2.0f) ||
+            (app.metric1_y - app.metric2_y > 2.0f) ||
             app.overflow) {
             fprintf(stderr,
               "html2gui: TORTURE VERIFY FAIL ops=%d doc=%.0f vars=%d dark=%d overflow=%d\n",
