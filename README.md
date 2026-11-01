@@ -1,66 +1,87 @@
 # html2gui
 
-Native C GUI toolkit project using **standard HTML and CSS** for interface
-definitions and **C89** for application logic.
+A C89-facing native GUI toolkit project using **standard HTML and CSS**
+for interface definitions and **native C callbacks** for application logic.
 
-## Standards parser bootstrap
+This is an early SDL3 renderer prototype, not a browser and **not yet a
+standards-compliant CSS layout engine**. There is no JavaScript runtime.
 
-This branch deliberately **replaces the old hand-written HTML/Tailwind parser**.
-HTML tokenization, error recovery, tree construction, named character references,
-foreign content and DOM come from [Lexbor](https://github.com/lexbor/lexbor),
-which targets the [WHATWG HTML Living Standard](https://html.spec.whatwg.org/).
+## Build on Arch Linux
 
-CSS tokenization, at-rules, qualified rules, selectors and declaration parsing
-come from Lexbor's CSS modules, based on the
-[W3C CSS Syntax Module](https://www.w3.org/TR/css-syntax-3/).
-**Do not special-case Tailwind tokens in the HTML parser.** Tailwind becomes
-ordinary CSS input when compiled to a stylesheet.
+    sudo pacman -S --needed base-devel cmake pkgconf sdl3 sdl3_ttf ttf-dejavu
 
-Lexbor itself is implemented in **C99**. Its public headers use C99 inline,
-so the isolated src/parser_lexbor.c adapter is compiled as C99, although its
-own code uses C89 syntax. **The published html2gui header and all application
-and test code compile under strict ISO C89.** The dependency is not fully C89;
-a no-C99-dependencies policy would require a different implementation.
+Install Lexbor once (it is an external C99 library):
 
-### Build
+    git clone https://github.com/lexbor/lexbor.git /tmp/lexbor
+    cmake -S /tmp/lexbor -B /tmp/lexbor-build -DLEXBOR_BUILD_TESTS=OFF
+    cmake --build /tmp/lexbor-build -j8
+    sudo cmake --install /tmp/lexbor-build
 
-Install [Lexbor](https://lexbor.com/documentation/) headers and library
-(e.g. build and install Lexbor 2.9+ using CMake), and a C compiler:
+If Lexbor installs into /usr/local/lib, configure the system linker:
 
-    make
-    make test
-    build/h2g-parse html some-file.html
-    build/h2g-parse css some-file.css
+    echo /usr/local/lib | sudo tee /etc/ld.so.conf.d/lexbor.conf
+    sudo ldconfig
 
-The parser API is in [include/html2gui/parser.h](include/html2gui/parser.h).
+Build and run:
 
-### Scope of this change
+    make clean all test render renderer-test
+    ./build/h2g-render examples/hello.html examples/hello.css
 
-- WHATWG document parsing through Lexbor, DOM traversal and element names.
-- W3C CSS stylesheet parsing through Lexbor, traversable top-level rule chain.
-- An independent C89-facing API and smoke tests.
-- No GTK, SDL, Cairo, Tailwind-specific parser or custom HTML tokenizer.
+To render your own document (head-embedded <style> is supported):
 
-**Not implemented yet:** computed style / cascade, selectors applied to DOM,
-CSSOM-to-style mapping, layout (block/inline/flex/grid), painting, SDL backend,
-native event handling, widget state and accessibility. Parsing valid CSS does
-not mean the toolkit renders all CSS. Likewise HTML DOM parsing is not all
-of HTML's interactive/browser behavior.
+    ./build/h2g-render /path/to/page.html /path/to/style.css
 
-The old v0.4.x implementation remains recoverable from Git history. The
-new tree is intentionally small and not backwards-compatible.
+If no font is found automatically, set H2G_FONT to a TrueType path.
+Use --headless before the HTML path to create a dummy SDL window, render
+one frame, print paint counts and exit. Example:
 
-### Next milestones
+    ./build/h2g-render --headless examples/hello.html examples/hello.css
 
-1. Expose DOM attributes, text, namespaces, CSS rule/declaration traversal.
-2. Connect selector matching and CSS cascade, including origins, layers,
-   inheritance, custom properties and media queries.
-3. Implement layout primitives and reference test against browser fixtures.
-4. Implement SDL3 rendering, text input and C widget event bindings.
+The window has wheel/page-up/page-down scrolling and reflows on resize.
+Clicking a button prints its HTML id to stdout. Escape closes the window.
 
-### Compliance tracking
+## Architecture
 
-Use [html5lib-tests](https://github.com/html5lib/html5lib-tests) for HTML
-tokenizer/tree-builder conformance and [web-platform-tests](https://github.com/web-platform-tests/wpt)
-for CSS Syntax and rendering behavior. The current smoke tests prove API
-wiring only; they are not a substitute for a conformance report.
+1. Lexbor tokenizes HTML and constructs the WHATWG DOM tree.
+2. Lexbor parses CSS per the W3C CSS Syntax specification.
+3. Lexbor matches supported top-level CSS style selectors against DOM nodes.
+4. The initial C89 style engine applies basic properties and a simple cascade.
+5. The initial C89 layout engine produces a block/flex approximation.
+6. SDL3 draws boxes and *cached* SDL_ttf text textures from a display list.
+
+The public parser API is in include/html2gui/parser.h. The only C99
+translation unit is src/parser_lexbor.c, because Lexbor's headers require C99;
+all other html2gui code compiles with -std=c89 -pedantic -Werror.
+
+## Rendering scope and caveats
+
+**Currently rendered:** standard DOM text, headings, paragraphs, solid RGB
+backgrounds, text colors, margin and padding (one uniform value), font sizes
+and weights, simple fixed-width and max-width boxes, basic equal-width flex
+rows, buttons with hit testing, scrolling, resize reflow and embedded <style>
+plus an optional external CSS file.
+
+**Not implemented:** CSS Grid; real CSS Flexbox and inline formatting
+algorithms; block margin collapsing; CSS normal flow; cascade origins,
+@media/@supports/@layer handling, custom properties/var(), inline styles;
+percentage/calc() lengths; transforms, gradients, shadows, blur, images/SVG,
+rounded corners, accessible widget state, focus, IME, keyboard input
+widgets, JavaScript or network navigation.
+
+Lexbor *parsing* CSS is not the same as supporting every parsed property
+in layout/paint. This renderer is designed as a vertical test slice, not a
+claim of complete HTML/CSS compatibility or visual parity with a browser.
+On very large documents the per-node selector matching remains expensive.
+The bounded display list warns if its command capacity is reached.
+
+## Standards and conformance plan
+
+- [WHATWG HTML Living Standard](https://html.spec.whatwg.org/)
+- [W3C CSS Syntax](https://www.w3.org/TR/css-syntax-3/)
+- [html5lib-tests](https://github.com/html5lib/html5lib-tests)
+- [Web Platform Tests](https://github.com/web-platform-tests/wpt)
+
+This branch replaces the old hand-written HTML/Tailwind-to-GTK implementation.
+The previous code remains recoverable from Git history. Tailwind is not
+special-cased: it needs a compiled stylesheet, and modern Tailwind features
+will not render accurately until the related CSS semantics are implemented.
