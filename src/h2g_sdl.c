@@ -400,8 +400,8 @@ static H2GStyle style_for(H2GApp *app, const H2GDomNode *node,
     apply.app = app;
     for (i=0; i<app->sheet_count; i++) {
         apply.base = (unsigned long)i * 100000000UL;
-        if (!h2g_css_visit_matching(app->sheets[i],node,
-                                    apply_declaration,&apply))
+        if (!h2g_css_visit_matching_at_width(app->sheets[i],node,
+                                    (float)app->viewport_w,apply_declaration,&apply))
             fprintf(stderr,"html2gui: CSS match error\n");
     }
     return s;
