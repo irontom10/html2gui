@@ -155,12 +155,45 @@ static int test_tailwind_root_variables(void)
     return 0;
 }
 
+
+static int test_responsive_media(void)
+{
+    static const char markup[] =
+        "<div class=\"sm:grid-cols-2\">grid</div>";
+    static const char css[] =
+        "@layer utilities {"
+        " .sm\\:grid-cols-2 {"
+        " @media (width >= 40rem) {"
+        " grid-template-columns: repeat(2, minmax(0, 1fr));"
+        " }"
+        " }"
+        " }";
+    H2GHtmlDocument *doc = h2g_html_parse(markup, sizeof(markup)-1);
+    H2GCssStylesheet *sheet = h2g_css_parse(css, sizeof(css)-1);
+    const H2GDomNode *div;
+    CountMatches count;
+    CHECK(doc != NULL && sheet != NULL);
+    div = find_element(h2g_html_body(doc), "div");
+    CHECK(div != NULL);
+    count.count = 0; count.background = 0; count.variables = 0;
+    CHECK(h2g_css_visit_matching_at_width(sheet,div,500,
+                                           count_matches,&count));
+    CHECK(count.count == 0);
+    CHECK(h2g_css_visit_matching_at_width(sheet,div,1100,
+                                           count_matches,&count));
+    CHECK(count.count == 1);
+    h2g_css_destroy(sheet);
+    h2g_html_destroy(doc);
+    return 0;
+}
+
 int main(void)
 {
     CHECK(test_html() == 0);
     CHECK(test_css() == 0);
     CHECK(test_nested_css() == 0);
     CHECK(test_tailwind_root_variables() == 0);
+    CHECK(test_responsive_media() == 0);
     puts("parser smoke tests: PASS");
     return 0;
 }
