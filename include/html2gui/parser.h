@@ -48,23 +48,20 @@ const H2GCssRule *h2g_css_next_rule(const H2GCssRule *rule);
 int h2g_css_rule_kind(const H2GCssRule *rule);
 size_t h2g_css_top_level_rule_count(const H2GCssStylesheet *stylesheet);
 size_t h2g_css_indexed_style_rule_count(const H2GCssStylesheet *stylesheet);
-/* Preserve :root custom properties even if a neighboring vendor/shadow
- * selector makes Lexbor classify a style rule as invalid for matching.
- * This fallback does not make unsupported selectors valid generally.
- */
-int h2g_css_visit_root_variables(const H2GCssStylesheet *stylesheet,
-                                 H2GCssDeclarationFn callback, void *user);
-
 /* Callback receives serialized CSS declaration name/value and precedence.
  * Pointers are valid only during the callback. The caller implements the
- * computed style and cascade. This release matches top-level style rules;
- * @media, @supports, layers, origins and inline styles are not yet applied.
+ * computed style and cascade. This release matches style rules in unconditional @layer groups;
+ * @media, @supports, origins and inline styles are not yet applied.
  * Returns 1 on success, 0 on internal selector failure.
  */
 typedef void (*H2GCssDeclarationFn)(const char *name, const char *value,
       unsigned long specificity, int important, unsigned long order, void *user);
 int h2g_css_visit_matching(const H2GCssStylesheet *stylesheet,
       const H2GDomNode *node, H2GCssDeclarationFn callback, void *user);
+
+/* Recover parsed :root custom declarations from unsupported selector lists. */
+int h2g_css_visit_root_variables(const H2GCssStylesheet *stylesheet,
+                                 H2GCssDeclarationFn callback, void *user);
 
 #ifdef __cplusplus
 }
