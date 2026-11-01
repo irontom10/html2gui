@@ -187,6 +187,59 @@ static int test_responsive_media(void)
     return 0;
 }
 
+
+/* Top-level @media rules must participate in the class index, but only
+ * when every enclosing media predicate matches the current viewport.
+ * An unsupported conditional rule must never become unconditional.
+ */
+static int test_top_level_media(void)
+{
+    static const char markup[] = "<div class=\"panel\">responsive</div>";
+    static const char css[] =
+        "@media (min-width: 700px) {"
+        " .panel { background-color: #010203; }"
+        " }"
+        "@layer components {"
+        " @media screen and (width >= 900px) {"
+        " .panel { color: green; }"
+        " }"
+        " }"
+        "@media print and (min-width: 1px) {"
+        " .panel { background-color: red; }"
+        " }"
+        "@supports (display: grid) {"
+        " .panel { color: blue; }"
+        " }";
+    H2GHtmlDocument *doc = h2g_html_parse(markup, sizeof(markup)-1);
+    H2GCssStylesheet *sheet = h2g_css_parse(css, sizeof(css)-1);
+    const H2GDomNode *div;
+    CountMatches count;
+    CHECK(doc != NULL && sheet != NULL);
+    div = find_element(h2g_html_body(doc), "div");
+    CHECK(div != NULL);
+    CHECK(h2g_css_indexed_style_rule_count(sheet) == 3);
+    count.count = 0; count.background = 0; count.variables = 0;
+    CHECK(h2g_css_visit_matching_at_width(sheet,div,500,
+                                           count_matches,&count));
+    CHECK(count.count == 0);
+    count.count = 0; count.background = 0;
+    CHECK(h2g_css_visit_matching_at_width(sheet,div,800,
+                                           count_matches,&count));
+    CHECK(count.count == 1);
+    CHECK(count.background == 1);
+    count.count = 0; count.background = 0;
+    CHECK(h2g_css_visit_matching_at_width(sheet,div,1100,
+                                           count_matches,&count));
+    CHECK(count.count == 2);
+    CHECK(count.background == 1);
+    count.count = 0; count.background = 0;
+    CHECK(h2g_css_visit_matching(sheet,div,count_matches,&count));
+    CHECK(count.count == 0);
+    h2g_css_destroy(sheet);
+    h2g_html_destroy(doc);
+    return 0;
+}
+
 int main(void)
 {
     CHECK(test_html() == 0);
@@ -194,6 +247,7 @@ int main(void)
     CHECK(test_nested_css() == 0);
     CHECK(test_tailwind_root_variables() == 0);
     CHECK(test_responsive_media() == 0);
+    CHECK(test_top_level_media() == 0);
     puts("parser smoke tests: PASS");
     return 0;
 }
