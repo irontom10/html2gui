@@ -454,6 +454,18 @@ static H2GStyle style_for(H2GApp *app, const H2GDomNode *node,
 /* This first editor supports text-like single-line controls only.
  * Checkboxes, radios, file pickers and password fields need specialized UI.
  */
+static int h2g_input_type_is(const char *type, size_t length,
+                             const char *expected)
+{
+    size_t i;
+    if (type == NULL || length != strlen(expected)) return 0;
+    for (i=0;i<length;i++)
+        if (tolower((unsigned char)type[i]) !=
+            (unsigned char)expected[i])
+            return 0;
+    return 1;
+}
+
 static int editable_input(const H2GDomNode *node)
 {
     size_t length;
@@ -464,11 +476,11 @@ static int editable_input(const H2GDomNode *node)
         return 0;
     type = h2g_dom_attribute(node, "type", &length);
     if (type == NULL || length == 0) return 1;
-    return (length == 4 && memcmp(type, "text", 4) == 0) ||
-           (length == 6 && memcmp(type, "search", 6) == 0) ||
-           (length == 5 && memcmp(type, "email", 5) == 0) ||
-           (length == 3 && memcmp(type, "tel", 3) == 0) ||
-           (length == 3 && memcmp(type, "url", 3) == 0);
+    return h2g_input_type_is(type,length,"text") ||
+           h2g_input_type_is(type,length,"search") ||
+           h2g_input_type_is(type,length,"email") ||
+           h2g_input_type_is(type,length,"tel") ||
+           h2g_input_type_is(type,length,"url");
 }
 
 static H2GInput *get_input(H2GApp *app, const H2GDomNode *node)
@@ -839,8 +851,7 @@ static float layout_node(H2GApp *app, const H2GDomNode *node,
             size_t type_length=0;
             int password=0;
             type=h2g_dom_attribute(node,"type",&type_length);
-            if (type != NULL && type_length == 8 &&
-                memcmp(type,"password",8)==0)
+            if (h2g_input_type_is(type,type_length,"password"))
                 password=1;
             text=h2g_dom_attribute(node,"placeholder",&len);
             if (text == NULL && !password)
