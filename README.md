@@ -24,8 +24,9 @@ If Lexbor installs into /usr/local/lib, configure the system linker:
 
 Build and run:
 
-    make clean all test render renderer-test
-    ./build/h2g-render examples/hello.html examples/hello.css
+    make clean all test render renderer-test torture-test
+    ./build/h2g-render examples/basic.html examples/basic.css
+    ./build/h2g-render examples/torture.html
 
 To render your own document (head-embedded <style> is supported):
 
@@ -35,7 +36,7 @@ If no font is found automatically, set H2G_FONT to a TrueType path.
 Use --headless before the HTML path to create a dummy SDL window, render
 one frame, print paint counts and exit. Example:
 
-    ./build/h2g-render --headless examples/hello.html examples/hello.css
+    ./build/h2g-render --headless examples/basic.html examples/basic.css
 
 The window has wheel/page-up/page-down scrolling and reflows on resize.
 Clicking a button prints its HTML id to stdout. Escape closes the window.
@@ -44,9 +45,9 @@ Clicking a button prints its HTML id to stdout. Escape closes the window.
 
 1. Lexbor tokenizes HTML and constructs the WHATWG DOM tree.
 2. Lexbor parses CSS per the W3C CSS Syntax specification.
-3. Lexbor matches supported top-level CSS style selectors against DOM nodes.
-4. The initial C89 style engine applies basic properties and a simple cascade.
-5. The initial C89 layout engine produces a block/flex approximation.
+3. Lexbor matches class-indexed CSS selectors from top-level and nested `@layer` rules against DOM nodes; simple nested viewport-width `@media` declarations can be evaluated.
+4. The initial C89 style engine applies basic properties, root theme variables, and OKLCH colors using an incomplete cascade.
+5. The initial C89 layout engine produces a block/flex/grid approximation.
 6. SDL3 draws boxes and *cached* SDL_ttf text textures from a display list.
 
 The public parser API is in include/html2gui/parser.h. The only C99
@@ -55,24 +56,33 @@ all other html2gui code compiles with -std=c89 -pedantic -Werror.
 
 ## Rendering scope and caveats
 
-**Currently rendered:** standard DOM text, headings, paragraphs, solid RGB
+**Currently rendered:** standard DOM text, headings, paragraphs, solid RGB and OKLCH
 backgrounds, text colors, margin and padding (one uniform value), font sizes
 and weights, simple fixed-width and max-width boxes, basic equal-width flex
-rows, buttons with hit testing, scrolling, resize reflow and embedded <style>
-plus an optional external CSS file.
+rows and grid tracks, `position:absolute` elements kept out of normal flow,
+clipped screen-reader-only content, buttons with hit testing, scrolling,
+resize reflow and embedded `<style>` plus an optional external CSS file.
+Theme variables and a narrow subset of `calc(var(...) * multiplier)` work.
+Selected simple viewport-width nested `@media` rules are handled.
 
-**Not implemented:** CSS Grid; real CSS Flexbox and inline formatting
-algorithms; block margin collapsing; CSS normal flow; cascade origins,
-@media/@supports/@layer handling, custom properties/var(), inline styles;
-percentage/calc() lengths; transforms, gradients, shadows, blur, images/SVG,
-rounded corners, accessible widget state, focus, IME, keyboard input
-widgets, JavaScript or network navigation.
+**Not implemented:** complete CSS Grid/Flexbox and inline formatting
+algorithms; block margin collapsing; full normal flow and positioning;
+complete cascade origins/layers and inheritance, general `@media`/`@supports`
+queries, general custom-property inheritance/resolution and CSS math;
+inline styles, transforms, gradients, shadows, blur, images/SVG, rounded
+corners, accessible widget state, focus, IME, keyboard input widgets,
+JavaScript or network navigation.
 
 Lexbor *parsing* CSS is not the same as supporting every parsed property
 in layout/paint. This renderer is designed as a vertical test slice, not a
 claim of complete HTML/CSS compatibility or visual parity with a browser.
-On very large documents the per-node selector matching remains expensive.
-The bounded display list warns if its command capacity is reached.
+The class-indexed selector matcher improves repeated utility-class documents,
+but broad selectors still incur work per node. The bounded display list warns
+if its command capacity is reached. Run `make torture-test` to render the
+3.35 MB Tailwind fixture headlessly and assert non-trivial styling and a
+visible hero heading; CI uploads the first-frame BMP for inspection.
+This is a stability/style smoke test, **not** a visual parity or standards
+conformance certification.
 
 ## Standards and conformance plan
 
