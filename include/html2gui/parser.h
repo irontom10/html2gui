@@ -58,6 +58,12 @@ typedef void (*H2GCssDeclarationFn)(const char *name, const char *value,
       unsigned long specificity, int important, unsigned long order, void *user);
 int h2g_css_visit_matching(const H2GCssStylesheet *stylesheet,
       const H2GDomNode *node, H2GCssDeclarationFn callback, void *user);
+/* Include nested declarations guarded by supported width-only @media
+ * conditions. Does not yet implement full media query semantics.
+ */
+int h2g_css_visit_matching_at_width(const H2GCssStylesheet *stylesheet,
+      const H2GDomNode *node, float viewport_width,
+      H2GCssDeclarationFn callback, void *user);
 
 /* Recover parsed :root custom declarations from unsupported selector lists. */
 int h2g_css_visit_root_variables(const H2GCssStylesheet *stylesheet,
