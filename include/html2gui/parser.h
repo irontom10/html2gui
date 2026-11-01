@@ -48,6 +48,12 @@ const H2GCssRule *h2g_css_next_rule(const H2GCssRule *rule);
 int h2g_css_rule_kind(const H2GCssRule *rule);
 size_t h2g_css_top_level_rule_count(const H2GCssStylesheet *stylesheet);
 size_t h2g_css_indexed_style_rule_count(const H2GCssStylesheet *stylesheet);
+/* Preserve :root custom properties even if a neighboring vendor/shadow
+ * selector makes Lexbor classify a style rule as invalid for matching.
+ * This fallback does not make unsupported selectors valid generally.
+ */
+int h2g_css_visit_root_variables(const H2GCssStylesheet *stylesheet,
+                                 H2GCssDeclarationFn callback, void *user);
 
 /* Callback receives serialized CSS declaration name/value and precedence.
  * Pointers are valid only during the callback. The caller implements the
