@@ -30,6 +30,7 @@ typedef struct H2GColor { unsigned char r, g, b, a; } H2GColor;
 typedef struct H2GStyle {
     H2GColor fg, bg;
     int size, bold, display, flex_column, position, clipped, grid_columns;
+    float grid_first_px;
     float margin, padding, gap, width, height, max_width;
     int specified[H2G_PROP_COUNT];
     int imp[H2G_PROP_COUNT];
@@ -366,9 +367,17 @@ static void apply_declaration(const char *name, const char *value,
         break;
     case 18: {
         int count = 0;
+        float fixed = 0;
         if (sscanf(value,"repeat(%d",&count)==1 &&
-            count > 0 && count <= 12)
+            count > 0 && count <= 12) {
             style->grid_columns=count;
+            style->grid_first_px=0;
+        } else if (sscanf(value," %fpx",&fixed)==1 &&
+                   strstr(value,"minmax(")!=NULL &&
+                   fixed>0 && fixed<10000) {
+            style->grid_columns=2;
+            style->grid_first_px=fixed;
+        }
         break;
     }
     default: break;
@@ -639,14 +648,26 @@ static float layout_node(H2GApp *app, const H2GDomNode *node,
         int cols = s.grid_columns > 0 ? s.grid_columns : 1;
         int col = 0, rows = 0;
         float cell_w, row_max = 0, row_y = inner_y;
+        float child_w, child_x;
         cell_w = (inner_w - (cols - 1)*s.gap) / cols;
         if (cell_w < 20) cell_w = 20;
         for (child=h2g_dom_first_child(node); child;
              child=h2g_dom_next_sibling(child)) {
             if (h2g_dom_type(child)!=H2G_DOM_ELEMENT ||
                 ignored_element(child)) continue;
-            ch=layout_node(app,child,&s,outer_x+s.padding+
-                       col*(cell_w+s.gap),row_y,cell_w,depth+1);
+            child_w=cell_w;
+            child_x=outer_x+s.padding+col*(cell_w+s.gap);
+            if (cols == 2 && s.grid_first_px > 0) {
+                if (col == 0) {
+                    child_w=s.grid_first_px;
+                    child_x=outer_x+s.padding;
+                } else {
+                    child_w=inner_w-s.grid_first_px-s.gap;
+                    if (child_w<20) child_w=20;
+                    child_x=outer_x+s.padding+s.grid_first_px+s.gap;
+                }
+            }
+            ch=layout_node(app,child,&s,child_x,row_y,child_w,depth+1);
             if (ch > row_max) row_max = ch;
             col++;
             if (col == cols) {
