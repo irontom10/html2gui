@@ -36,8 +36,9 @@ const char *h2g_dom_attribute(const H2GDomNode *node, const char *name,
                               size_t *length);
 /* Text data for a text node (borrowed); use text_content for descendants. */
 const char *h2g_dom_text(const H2GDomNode *node, size_t *length);
-/* Text content is owned by the document and remains valid until destroy. */
+/* Text content is an allocated copy. Release with h2g_dom_text_content_free. */
 const char *h2g_dom_text_content(const H2GDomNode *node, size_t *length);
+void h2g_dom_text_content_free(const H2GDomNode *node, const char *text);
 size_t h2g_html_body_node_count(const H2GHtmlDocument *document);
 
 H2GCssStylesheet *h2g_css_parse(const char *utf8, size_t length);
@@ -46,6 +47,7 @@ const H2GCssRule *h2g_css_first_rule(const H2GCssStylesheet *stylesheet);
 const H2GCssRule *h2g_css_next_rule(const H2GCssRule *rule);
 int h2g_css_rule_kind(const H2GCssRule *rule);
 size_t h2g_css_top_level_rule_count(const H2GCssStylesheet *stylesheet);
+size_t h2g_css_indexed_style_rule_count(const H2GCssStylesheet *stylesheet);
 
 /* Callback receives serialized CSS declaration name/value and precedence.
  * Pointers are valid only during the callback. The caller implements the
