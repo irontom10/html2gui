@@ -1051,6 +1051,28 @@ static int focus_next_input(H2GApp *app, int backwards)
     return focus_input(app,&app->inputs[i]);
 }
 
+/* Put the insertion caret at the nearest visible UTF-8 boundary. */
+static size_t h2g_input_position_at_x(H2GApp *app, H2GInput *input,
+                                      float x)
+{
+    TTF_Font *font;
+    const char *text=input->editor.text;
+    size_t start=input->view_start, position=start, next;
+    float relative=x-input->text_x;
+    int previous_width=0, next_width;
+    if (relative<=0) return start;
+    font=get_font(app,input->font_size,input->font_bold);
+    while (position<input->view_end) {
+        next=h2g_input_next(text,input->editor.length,position);
+        next_width=h2g_input_width(font,text+start,next-start);
+        if (relative < ((float)previous_width+(float)next_width)*0.5f)
+            return position;
+        position=next;
+        previous_width=next_width;
+    }
+    return input->view_end;
+}
+
 static int click(H2GApp *app, float x, float y)
 {
     int i;
@@ -1063,8 +1085,10 @@ static int click(H2GApp *app, float x, float y)
             y>=op->rect.y && y<op->rect.y+op->rect.h) {
             if (op->type==4) {
                 if (op->input != NULL)
-                    h2g_text_input_end(&op->input->editor);
-                return focus_input(app,op->input);
+                    op->input->editor.cursor=
+                        h2g_input_position_at_x(app,op->input,x);
+                (void)focus_input(app,op->input);
+                return 1;
             }
             (void)focus_input(app,NULL);
             if (app->on_button != NULL) {
@@ -1252,7 +1276,11 @@ int h2g_renderer_run_ex(const char *html_path, const char *css_path,
             H2GOp *op=&app.ops[i];
             if (op->type==4 && op->input != NULL &&
                 strcmp(op->input->id,target)==0) {
-                (void)click(&app,op->rect.x+op->rect.w*0.5f,
+                const char *where=getenv("H2G_TEST_INPUT_X");
+                double fraction=where!=NULL ? strtod(where,NULL) : 0.5;
+                if (fraction < 0.01) fraction=0.01;
+                if (fraction > 0.99) fraction=0.99;
+                (void)click(&app,op->rect.x+op->rect.w*(float)fraction,
                             op->rect.y+op->rect.h*0.5f-app.scroll);
                 if (text != NULL) (void)handle_text_insert(&app,text);
                 rebuild(&app);
