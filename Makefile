@@ -71,6 +71,10 @@ native-callback-test: $(BUILD)/native-callback-smoke
 native-input-test: $(BUILD)/native-input-smoke
 	H2G_TEST_INPUT=name H2G_TEST_TEXT=abc ./$(BUILD)/native-input-smoke
 
+.PHONY: native-input-click-test
+native-input-click-test: $(BUILD)/native-input-smoke
+	H2G_TEST_INPUT=name H2G_TEST_TEXT=abc H2G_TEST_INPUT_X=0.01 ./$(BUILD)/native-input-smoke
+
 .PHONY: native-example
 native-example: $(BUILD)/native-example
 
