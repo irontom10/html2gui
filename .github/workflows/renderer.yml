@@ -13,7 +13,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential cmake pkg-config \
-            libfreetype-dev libharfbuzz-dev fonts-dejavu-core
+            libfreetype-dev libharfbuzz-dev fonts-dejavu-core \
+            libx11-dev libxext-dev libxrandr-dev libxfixes-dev \
+            libxcursor-dev libxi-dev libxss-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libegl1-mesa-dev libgl-dev
       - name: Build Lexbor
         run: |
           git clone --depth 1 https://github.com/lexbor/lexbor.git /tmp/lexbor
