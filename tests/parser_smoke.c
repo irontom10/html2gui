@@ -82,10 +82,51 @@ static int test_css(void)
     return 0;
 }
 
+
+typedef struct CountMatches { int count; int background; } CountMatches;
+
+static void count_matches(const char *name, const char *value,
+    unsigned long specificity, int important, unsigned long order, void *user)
+{
+    CountMatches *count = (CountMatches *)user;
+    (void)specificity; (void)important; (void)order;
+    count->count++;
+    if (strcmp(name,"background-color")==0 && value[0] != '\0')
+        count->background++;
+}
+
+static int test_nested_css(void)
+{
+    static const char markup[] = "<div class=\"bg-a\"><p>Hello</p></div>";
+    static const char rules[] =
+        "@layer theme { :root { --color-a: #112233; } }"
+        "@layer utilities {"
+        " .bg-a { background-color: #112233; }"
+        " .bg-b:hover { color: red; }"
+        " }";
+    H2GHtmlDocument *doc;
+    H2GCssStylesheet *sheet;
+    const H2GDomNode *div;
+    CountMatches count;
+    doc = h2g_html_parse(markup,sizeof(markup)-1);
+    sheet = h2g_css_parse(rules,sizeof(rules)-1);
+    CHECK(doc != NULL && sheet != NULL);
+    CHECK(h2g_css_indexed_style_rule_count(sheet) >= 3);
+    div=find_element(h2g_html_body(doc),"div");
+    CHECK(div != NULL);
+    count.count=0; count.background=0;
+    CHECK(h2g_css_visit_matching(sheet,div,count_matches,&count));
+    CHECK(count.background==1);
+    h2g_css_destroy(sheet);
+    h2g_html_destroy(doc);
+    return 0;
+}
+
 int main(void)
 {
     CHECK(test_html() == 0);
     CHECK(test_css() == 0);
+    CHECK(test_nested_css() == 0);
     puts("parser smoke tests: PASS");
     return 0;
 }
