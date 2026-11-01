@@ -738,6 +738,7 @@ static int add_css(H2GApp *app, const char *data, size_t length)
         const H2GDomNode *root = h2g_dom_parent(h2g_html_head(app->html));
         if (root != NULL)
             (void)h2g_css_visit_matching(sheet,root,capture_var,app);
+        (void)h2g_css_visit_root_variables(sheet,capture_var,app);
     }
     return 1;
 }
