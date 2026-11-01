@@ -1,86 +1,65 @@
-# html2gtk v0.4.1 — C89 GUI rendering prototype
+# html2gui
 
-**Purpose:** HTML and Tailwind as declarative *native C GUI* markup, with a
-GTK4/Pango/Cairo backend. This is **not** intended to become a network browser.
-The C89 canvas runtime and older GtkBuilder generator are separate backends.
+Native C GUI toolkit project using **standard HTML and CSS** for interface
+definitions and **C89** for application logic.
 
-## Build and preview on Arch
+## Standards parser bootstrap
 
-```sh
-sudo pacman -S --needed base-devel gtk4 pango cairo
-make clean
-make test
-make canvas-browser
-./canvas-browser examples/doomsday.html
-```
+This branch deliberately **replaces the old hand-written HTML/Tailwind parser**.
+HTML tokenization, error recovery, tree construction, named character references,
+foreign content and DOM come from [Lexbor](https://github.com/lexbor/lexbor),
+which targets the [WHATWG HTML Living Standard](https://html.spec.whatwg.org/).
 
-Compare the canvas at the **same logical window width** as the HTML reference,
-then resize it. At 650px, the sidebar is hidden and metrics stack into two
-columns; at 1600px, the sidebar is 300px and metrics use four columns.
+CSS tokenization, at-rules, qualified rules, selectors and declaration parsing
+come from Lexbor's CSS modules, based on the
+[W3C CSS Syntax Module](https://www.w3.org/TR/css-syntax-3/).
+**Do not special-case Tailwind tokens in the HTML parser.** Tailwind becomes
+ordinary CSS input when compiled to a stylesheet.
 
-The older static GtkBuilder compiler is retained:
+Lexbor's implementation is **C99**, not C89. It is compiled as an external
+dependency. The public html2gui API and all new html2gui-owned source files
+are written in strict ISO C89. If *every dependency* must also be C89, this
+approach will not satisfy that constraint.
 
-```sh
-make preview
-./html2gtk examples/errs.html output.ui output.css ERRS 1600
-./preview output.ui output.css
-```
+### Build
 
-## Visual parity improvements in v0.4.1
+Install [Lexbor](https://lexbor.com/documentation/) headers and library
+(e.g. build and install Lexbor 2.9+ using CMake), and a C compiler:
 
-- **Tailwind CSS v4 colors:** `h2g_palette_v4.h` holds 242 OKLCH theme colors,
-  converted to sRGB. The canvas backend uses these rather than the older
-  compiler's Tailwind v3 table. Opacity suffixes (`/10`, `/20`, etc.) survive.
-- **Correct gradient text placement:** Gradient stops are computed over the
-  styled text span's Pango x-range, not over the entire enclosing label.
-  The base gradient text is transparent so the gradient is not double-painted.
-- **Decorative glows:** `absolute` blurred cyan/fuchsia blobs in the Doomsday
-  hero no longer take up layout space. They are rendered as clipped radial
-  glows. This approximates the CSS blurred element, not arbitrary CSS filter
-  behavior.
-- **Line height and tracking:** `leading-*`, `leading-[.98]`, `tracking-*`,
-  and `tracking-[.25em]` are translated for text. Text with nested Pango spans
-  now uses px-to-pt conversion for per-span font sizes and letter spacing.
-- **Inline-flex fit-content:** The warning badge/pill now uses intrinsic
-  content width, rather than stretching across the panel.
-- **Natural flex text sizes:** Where Pango is available, controls get measured
-  glyph widths; plain C headless tests keep an approximate fallback.
-- **Soft shadows:** The Cairo frontend generates bounded blurred A8 masks
-  (three box filter passes) rather than eight concentric silhouette layers.
-  Frosted backdrop blur remains software based.
-- **Paint ordering:** Decorative content is drawn underneath rounded borders;
-  `sr-only` content is omitted from visible layout. Flex link text children
-  have a visible inter-element gap.
+    make
+    make test
+    build/h2g-parse html some-file.html
+    build/h2g-parse css some-file.css
 
-## Verification
+The parser API is in [include/html2gui/parser.h](include/html2gui/parser.h).
 
-`make test` compiles the core with strict ISO C89 (`-std=c89 -pedantic`), runs
-the previous parser/compiler and responsive layout tests, and adds
-`h2g-parity-test`: two hero glow paints, a v4 cyan color match, `.98` hero
-leading, clipped gradient text, transparent gradient markup, converted
-10px inline markup, and compact inline badge geometry.
+### Scope of this change
 
-**GTK caveat:** GTK4/Pango/Cairo development headers are not installed in the
-artifact build environment. The `canvas-browser` target could not be compiled
-or screenshot-tested here. Run it on Bertha; this release is a source-level
-and headless-command-stream fix, not a claim of pixel-perfect browser parity.
+- WHATWG document parsing through Lexbor, DOM traversal and element names.
+- W3C CSS stylesheet parsing through Lexbor, traversable top-level rule chain.
+- An independent C89-facing API and smoke tests.
+- No GTK, SDL, Cairo, Tailwind-specific parser or custom HTML tokenizer.
 
-## Architectural limits
+**Not implemented yet:** computed style / cascade, selectors applied to DOM,
+CSSOM-to-style mapping, layout (block/inline/flex/grid), painting, SDL backend,
+native event handling, widget state and accessibility. Parsing valid CSS does
+not mean the toolkit renders all CSS. Likewise HTML DOM parsing is not all
+of HTML's interactive/browser behavior.
 
-- HTML5 parsing, CSS Flexbox/Grid, selectors and responsive media behavior are
-  **partial implementations**, not standards-complete.
-- The source retains the legacy shared-parser include until a dedicated DOM
-  translation unit is extracted.
-- Sticky positioning, browser overflow/stacking semantics, image/video/SVG
-  rendering, nested transforms, complete CSS filters, hover/focus state
-  machines, and native input widget callbacks remain incomplete.
-- Pango line spacing is an approximation of browser CSS line boxes. Inline
-  markup has color/weight/style/size but not a complete CSS inline formatting
-  context.
-- Shadows and frosted panels are software effects; large pages can incur
-  significant CPU work while scrolling or resizing.
+The old v0.4.x implementation remains recoverable from Git history. The
+new tree is intentionally small and not backwards-compatible.
 
-The goal remains: a **small, embeddable C89 GUI library on GTK4** with HTML and
-Tailwind as its UI format and application logic in C.
+### Next milestones
 
-Previous work: `CHANGES-v0.4.md`. Current release: `CHANGES-v0.4.1.md`.
+1. Expose DOM attributes, text, namespaces, CSS rule/declaration traversal.
+2. Connect selector matching and CSS cascade, including origins, layers,
+   inheritance, custom properties and media queries.
+3. Implement layout primitives and reference test against browser fixtures.
+4. Implement SDL3 rendering, text input and C widget event bindings.
+
+### Compliance tracking
+
+Use [html5lib-tests](https://github.com/html5lib/html5lib-tests) for HTML
+tokenizer/tree-builder conformance and [web-platform-tests](https://github.com/web-platform-tests/wpt)
+for CSS Syntax and rendering behavior. The current smoke tests prove API
+wiring only; they are not a substitute for a conformance report.

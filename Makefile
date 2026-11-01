@@ -1,48 +1,34 @@
 CC ?= cc
-CFLAGS ?= -O3
+AR ?= ar
+CFLAGS ?= -O2
+CPPFLAGS ?=
+# All html2gui-owned code is strict C89. Lexbor itself is compiled separately.
+WARN = -std=c89 -pedantic -Wall -Wextra -Werror
+LEXBOR_CFLAGS ?= $(shell pkg-config --cflags lexbor 2>/dev/null)
+LEXBOR_LIBS ?= $(shell pkg-config --libs lexbor 2>/dev/null || echo -llexbor)
+INCLUDES = -Iinclude $(LEXBOR_CFLAGS)
+BUILD = build
 
-.PHONY: all preview canvas-browser sample test canvas-test clean
-all: html2gtk h2g-layout-check
+.PHONY: all test clean
+all: $(BUILD)/libhtml2gui-parser.a $(BUILD)/h2g-parse
 
-html2gtk: html2gtk.c
-	$(CC) $(CFLAGS) -o $@ $<
+$(BUILD):
+	mkdir -p $(BUILD)
 
-h2g-layout-check: h2g_canvas.c h2g_canvas.h html2gtk.c h2g_layout_check.c
-	$(CC) $(CFLAGS) -Werror -o $@ h2g_canvas.c h2g_layout_check.c -lm
+$(BUILD)/parser_lexbor.o: src/parser_lexbor.c include/html2gui/parser.h | $(BUILD)
+	$(CC) $(CPPFLAGS) $(INCLUDES) $(CFLAGS) $(WARN) -c $< -o $@
 
-h2g-parity-test: h2g_canvas.c h2g_canvas.h h2g_palette_v4.h tests/visual_parity.c
-	$(CC) $(CFLAGS) -Werror -o $@ h2g_canvas.c tests/visual_parity.c -lm
+$(BUILD)/libhtml2gui-parser.a: $(BUILD)/parser_lexbor.o
+	$(AR) rcs $@ $<
 
-h2g-v4-test: h2g_canvas.c h2g_canvas.h tests/visual_v4.c
-	$(CC) $(CFLAGS) -Werror -o $@ h2g_canvas.c tests/visual_v4.c -lm
+$(BUILD)/h2g-parse: tools/h2g_parse.c $(BUILD)/libhtml2gui-parser.a
+	$(CC) $(CPPFLAGS) $(INCLUDES) $(CFLAGS) $(WARN) $< $(BUILD)/libhtml2gui-parser.a $(LEXBOR_LIBS) -o $@
 
-h2g-visual-test: h2g_canvas.c h2g_canvas.h html2gtk.c tests/visual.c
-	$(CC) $(CFLAGS) -Werror -o $@ h2g_canvas.c tests/visual.c -lm
+$(BUILD)/parser-smoke: tests/parser_smoke.c $(BUILD)/libhtml2gui-parser.a
+	$(CC) $(CPPFLAGS) $(INCLUDES) $(CFLAGS) $(WARN) $< $(BUILD)/libhtml2gui-parser.a $(LEXBOR_LIBS) -o $@
 
-h2g-reflow-test: h2g_canvas.c h2g_canvas.h html2gtk.c tests/reflow.c
-	$(CC) $(CFLAGS) -Werror -o $@ h2g_canvas.c tests/reflow.c -lm
-
-preview: preview.c h2g_layout.c h2g_layout.h
-	$(CC) $(CFLAGS) -o $@ preview.c h2g_layout.c $$(pkg-config --cflags --libs gtk4)
-
-canvas-browser: h2g_browser.c h2g_canvas.c h2g_canvas.h html2gtk.c
-	$(CC) $(CFLAGS) -o $@ h2g_browser.c h2g_canvas.c $$(pkg-config --cflags --libs gtk4 pangocairo) -lm
-
-sample: html2gtk
-	./html2gtk examples/errs.html examples/errs.ui examples/errs.css 'ERRS Diag'
-
-test: all h2g-reflow-test h2g-visual-test h2g-v4-test h2g-parity-test
-	sh tests/test.sh
-	sh tests/test-runtime.sh
-	./h2g-visual-test
-	./h2g-v4-test
-	./h2g-parity-test
-
-canvas-test: h2g-layout-check h2g-reflow-test h2g-visual-test h2g-v4-test h2g-parity-test
-	sh tests/test-runtime.sh
-	./h2g-visual-test
-	./h2g-v4-test
-	./h2g-parity-test
+test: $(BUILD)/parser-smoke
+	./$(BUILD)/parser-smoke
 
 clean:
-	rm -f html2gtk preview canvas-browser h2g-layout-check h2g-reflow-test h2g-visual-test h2g-v4-test h2g-parity-test examples/errs.ui examples/errs.css
+	rm -rf $(BUILD)
