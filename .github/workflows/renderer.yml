@@ -28,7 +28,8 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/libsdl-org/SDL.git /tmp/sdl3
           cmake -S /tmp/sdl3 -B /tmp/sdl3-build \
-            -DSDL_TESTS=OFF -DSDL_STATIC=OFF -DSDL_SHARED=ON
+            -DSDL_TESTS=OFF -DSDL_STATIC=OFF -DSDL_SHARED=ON \
+            -DSDL_X11_XTEST=OFF
           cmake --build /tmp/sdl3-build --parallel 4
           sudo cmake --install /tmp/sdl3-build
       - name: Build SDL3_ttf
