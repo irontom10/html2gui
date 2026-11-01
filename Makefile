@@ -42,6 +42,9 @@ $(BUILD)/h2g-render: tools/h2g_render.c $(BUILD)/libhtml2gui-renderer.a $(BUILD)
 $(BUILD)/native-callback-smoke: tests/native_callback_smoke.c $(BUILD)/libhtml2gui-renderer.a $(BUILD)/libhtml2gui-parser.a
 	$(CC) $(CPPFLAGS) $(INCLUDES) $(SDL_CFLAGS) $(CFLAGS) $(C89_WARN) $< $(BUILD)/libhtml2gui-renderer.a $(BUILD)/libhtml2gui-parser.a $(LEXBOR_LIBS) $(SDL_LIBS) -lm -o $@
 
+$(BUILD)/native-example: examples/native_callbacks.c $(BUILD)/libhtml2gui-renderer.a $(BUILD)/libhtml2gui-parser.a
+	$(CC) $(CPPFLAGS) $(INCLUDES) $(SDL_CFLAGS) $(CFLAGS) $(C89_WARN) $< $(BUILD)/libhtml2gui-renderer.a $(BUILD)/libhtml2gui-parser.a $(LEXBOR_LIBS) $(SDL_LIBS) -lm -o $@
+
 render: $(BUILD)/h2g-render
 
 test: $(BUILD)/parser-smoke
@@ -53,6 +56,9 @@ renderer-test: render
 .PHONY: native-callback-test
 native-callback-test: $(BUILD)/native-callback-smoke
 	H2G_TEST_CLICK=hello ./$(BUILD)/native-callback-smoke
+
+.PHONY: native-example
+native-example: $(BUILD)/native-example
 
 .PHONY: torture-test
 torture-test: render
