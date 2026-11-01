@@ -1,0 +1,22 @@
+name: parser
+on:
+  push:
+    branches: [main, html2gui/standards-parser-bootstrap]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake pkg-config
+      - name: Build Lexbor
+        run: |
+          git clone --depth 1 https://github.com/lexbor/lexbor.git /tmp/lexbor
+          cmake -S /tmp/lexbor -B /tmp/lexbor-build -DLEXBOR_BUILD_TESTS=OFF -DLEXBOR_BUILD_STATIC=ON
+          cmake --build /tmp/lexbor-build --parallel 2
+          sudo cmake --install /tmp/lexbor-build
+          sudo ldconfig
+      - name: Build html2gui parser and smoke tests
+        run: make clean all test

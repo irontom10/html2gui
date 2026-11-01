@@ -1,0 +1,9 @@
+.shell { max-width: 920px; margin: 24px; }
+.hero { margin: 8px; padding: 24px; }
+.hero-copy { color: #cbd5e1; font-size: 17px; }
+.panel { background-color: #ffffff; margin: 18px; padding: 24px; }
+.panel h2 { color: #1d4ed8; }
+.panel p { color: #475569; }
+.actions { display: flex; gap: 16px; }
+.actions button { background-color: #2563eb; padding: 14px; color: #ffffff; }
+.hint { font-size: 14px; }

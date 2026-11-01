@@ -1,48 +1,49 @@
 CC ?= cc
-CFLAGS ?= -O3
+AR ?= ar
+CFLAGS ?= -O2
+CPPFLAGS ?=
+C89_WARN = -std=c89 -pedantic -Wall -Wextra -Werror
+# Lexbor headers require C99; all public and SDL renderer code is C89.
+BRIDGE_WARN = -std=c99 -Wall -Wextra -Werror
+LEXBOR_CFLAGS ?= $(shell pkg-config --cflags lexbor 2>/dev/null)
+LEXBOR_LIBS ?= $(shell pkg-config --libs lexbor 2>/dev/null || echo -llexbor)
+SDL_CFLAGS ?= $(shell pkg-config --cflags sdl3 sdl3-ttf 2>/dev/null)
+SDL_LIBS ?= $(shell pkg-config --libs sdl3 sdl3-ttf 2>/dev/null)
+INCLUDES = -Iinclude $(LEXBOR_CFLAGS)
+BUILD = build
 
-.PHONY: all preview canvas-browser sample test canvas-test clean
-all: html2gtk h2g-layout-check
+.PHONY: all render test renderer-test clean
+all: $(BUILD)/libhtml2gui-parser.a $(BUILD)/h2g-parse
 
-html2gtk: html2gtk.c
-	$(CC) $(CFLAGS) -o $@ $<
+$(BUILD):
+	mkdir -p $(BUILD)
 
-h2g-layout-check: h2g_canvas.c h2g_canvas.h html2gtk.c h2g_layout_check.c
-	$(CC) $(CFLAGS) -Werror -o $@ h2g_canvas.c h2g_layout_check.c -lm
+$(BUILD)/parser_lexbor.o: src/parser_lexbor.c include/html2gui/parser.h | $(BUILD)
+	$(CC) $(CPPFLAGS) $(INCLUDES) $(CFLAGS) $(BRIDGE_WARN) -c $< -o $@
 
-h2g-parity-test: h2g_canvas.c h2g_canvas.h h2g_palette_v4.h tests/visual_parity.c
-	$(CC) $(CFLAGS) -Werror -o $@ h2g_canvas.c tests/visual_parity.c -lm
+$(BUILD)/libhtml2gui-parser.a: $(BUILD)/parser_lexbor.o
+	$(AR) rcs $@ $<
 
-h2g-v4-test: h2g_canvas.c h2g_canvas.h tests/visual_v4.c
-	$(CC) $(CFLAGS) -Werror -o $@ h2g_canvas.c tests/visual_v4.c -lm
+$(BUILD)/h2g-parse: tools/h2g_parse.c $(BUILD)/libhtml2gui-parser.a
+	$(CC) $(CPPFLAGS) $(INCLUDES) $(CFLAGS) $(C89_WARN) $< $(BUILD)/libhtml2gui-parser.a $(LEXBOR_LIBS) -o $@
 
-h2g-visual-test: h2g_canvas.c h2g_canvas.h html2gtk.c tests/visual.c
-	$(CC) $(CFLAGS) -Werror -o $@ h2g_canvas.c tests/visual.c -lm
+$(BUILD)/parser-smoke: tests/parser_smoke.c $(BUILD)/libhtml2gui-parser.a
+	$(CC) $(CPPFLAGS) $(INCLUDES) $(CFLAGS) $(C89_WARN) $< $(BUILD)/libhtml2gui-parser.a $(LEXBOR_LIBS) -o $@
 
-h2g-reflow-test: h2g_canvas.c h2g_canvas.h html2gtk.c tests/reflow.c
-	$(CC) $(CFLAGS) -Werror -o $@ h2g_canvas.c tests/reflow.c -lm
+$(BUILD)/h2g-render: src/h2g_sdl.c include/html2gui/parser.h $(BUILD)/libhtml2gui-parser.a
+	$(CC) $(CPPFLAGS) $(INCLUDES) $(SDL_CFLAGS) $(CFLAGS) $(C89_WARN) src/h2g_sdl.c $(BUILD)/libhtml2gui-parser.a $(LEXBOR_LIBS) $(SDL_LIBS) -lm -o $@
 
-preview: preview.c h2g_layout.c h2g_layout.h
-	$(CC) $(CFLAGS) -o $@ preview.c h2g_layout.c $$(pkg-config --cflags --libs gtk4)
+render: $(BUILD)/h2g-render
 
-canvas-browser: h2g_browser.c h2g_canvas.c h2g_canvas.h html2gtk.c
-	$(CC) $(CFLAGS) -o $@ h2g_browser.c h2g_canvas.c $$(pkg-config --cflags --libs gtk4 pangocairo) -lm
+test: $(BUILD)/parser-smoke
+	./$(BUILD)/parser-smoke
 
-sample: html2gtk
-	./html2gtk examples/errs.html examples/errs.ui examples/errs.css 'ERRS Diag'
+renderer-test: render
+	./$(BUILD)/h2g-render --headless examples/basic.html examples/basic.css
 
-test: all h2g-reflow-test h2g-visual-test h2g-v4-test h2g-parity-test
-	sh tests/test.sh
-	sh tests/test-runtime.sh
-	./h2g-visual-test
-	./h2g-v4-test
-	./h2g-parity-test
-
-canvas-test: h2g-layout-check h2g-reflow-test h2g-visual-test h2g-v4-test h2g-parity-test
-	sh tests/test-runtime.sh
-	./h2g-visual-test
-	./h2g-v4-test
-	./h2g-parity-test
+.PHONY: torture-test
+torture-test: render
+	timeout 90s env H2G_TORTURE_VERIFY=1 H2G_DUMP_LAYOUT=1 H2G_SCREENSHOT=$(BUILD)/torture.bmp ./$(BUILD)/h2g-render --headless examples/torture.html
 
 clean:
-	rm -f html2gtk preview canvas-browser h2g-layout-check h2g-reflow-test h2g-visual-test h2g-v4-test h2g-parity-test examples/errs.ui examples/errs.css
+	rm -rf $(BUILD)
