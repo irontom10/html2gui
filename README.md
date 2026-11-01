@@ -76,7 +76,9 @@ int main(void)
 ```
 
 Link with `-lhtml2gui-renderer -lhtml2gui-parser` followed by Lexbor,
-SDL3, SDL3_ttf and `-lm`. Use `make native-callback-test` for the
+SDL3, SDL3_ttf and `-lm`. A complete two-button program is in
+`examples/native_callbacks.c`; build and launch it with `make native-example`
+then `./build/native-example`. Use `make native-callback-test` for the
 headless synthetic click regression test.
 
 The only C99
