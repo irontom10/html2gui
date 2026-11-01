@@ -39,7 +39,11 @@ test: $(BUILD)/parser-smoke
 	./$(BUILD)/parser-smoke
 
 renderer-test: render
-	./$(BUILD)/h2g-render --headless examples/hello.html examples/hello.css
+	./$(BUILD)/h2g-render --headless examples/basic.html examples/basic.css
+
+.PHONY: torture-test
+torture-test: render
+	timeout 90s ./$(BUILD)/h2g-render --headless examples/torture.html
 
 clean:
 	rm -rf $(BUILD)
