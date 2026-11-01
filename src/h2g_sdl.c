@@ -408,6 +408,8 @@ static void apply_declaration(const char *name, const char *value,
     }
 }
 
+static int editable_input(const H2GDomNode *node);
+
 static H2GStyle style_for(H2GApp *app, const H2GDomNode *node,
                           const H2GStyle *parent)
 {
