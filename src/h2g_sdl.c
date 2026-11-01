@@ -224,7 +224,7 @@ static H2GStyle style_for(H2GApp *app, const H2GDomNode *node,
     }
     apply.style = &s;
     for (i=0; i<app->sheet_count; i++) {
-        apply.base = (unsigned long)i * 1000000UL;
+        apply.base = (unsigned long)i * 100000000UL;
         if (!h2g_css_visit_matching(app->sheets[i],node,
                                     apply_declaration,&apply))
             fprintf(stderr,"html2gui: CSS match error\n");
@@ -429,6 +429,7 @@ static float layout_node(H2GApp *app, const H2GDomNode *node,
     if (is_text_container(node)) {
         text=h2g_dom_text_content(node,&len);
         used=layout_text(app,text,len,outer_x+s.padding,inner_y,inner_w,&s);
+        h2g_dom_text_content_free(node,text);
         if (used<=0) used=(float)(s.size+5);
     } else if (tag_is(node,"input")) {
         text=h2g_dom_attribute(node,"placeholder",&len);
@@ -554,6 +555,8 @@ static int add_css(H2GApp *app, const char *data, size_t length)
     if (app->sheet_count>=H2G_MAX_SHEETS) return 0;
     sheet=h2g_css_parse(data,length);
     if (!sheet) return 0;
+    fprintf(stderr,"html2gui: stylesheet rules=%lu\n",
+            (unsigned long)h2g_css_indexed_style_rule_count(sheet));
     app->sheets[app->sheet_count++]=sheet;
     return 1;
 }
@@ -567,6 +570,7 @@ static void scan_styles(H2GApp *app, const H2GDomNode *node, int depth)
     if (tag_is(node,"style")) {
         text=h2g_dom_text_content(node,&len);
         if (text && len) (void)add_css(app,text,len);
+        h2g_dom_text_content_free(node,text);
         return;
     }
     for (child=h2g_dom_first_child(node);child;
