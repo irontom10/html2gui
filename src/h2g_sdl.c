@@ -64,6 +64,7 @@ typedef struct H2GApp {
     int var_count;
     H2GOp *ops;
     int op_count, overflow, viewport_w, viewport_h;
+    int dark_backgrounds;
     float document_h, scroll;
 } H2GApp;
 typedef struct H2GMatchApply {
@@ -446,6 +447,7 @@ static void clear_ops(H2GApp *app)
         if (app->ops[i].texture)
             SDL_DestroyTexture(app->ops[i].texture);
     app->op_count=0;
+    app->dark_backgrounds=0;
     app->overflow=0;
 }
 
@@ -577,6 +579,8 @@ static float layout_node(H2GApp *app, const H2GDomNode *node,
     inner_y=outer_y+s.padding;
 
     if (s.bg.a) {
+        if ((int)s.bg.r+(int)s.bg.g+(int)s.bg.b < 270)
+            app->dark_backgrounds++;
         background=add_op(app,1);
         if (background) {
             background->rect.x=outer_x; background->rect.y=outer_y;
@@ -658,9 +662,9 @@ static void rebuild(H2GApp *app)
         (float)app->viewport_h;
     if (app->scroll>app->document_h-app->viewport_h)
         app->scroll=app->document_h-app->viewport_h;
-    fprintf(stderr,"html2gui: viewport=%dx%d ops=%d document=%.0f vars=%d%s\n",
+    fprintf(stderr,"html2gui: viewport=%dx%d ops=%d document=%.0f vars=%d dark-bg=%d%s\n",
       app->viewport_w,app->viewport_h,app->op_count,app->document_h,
-      app->var_count,app->overflow?" (paint buffer exhausted)":"");
+      app->var_count,app->dark_backgrounds,app->overflow?" (paint buffer exhausted)":"");
 }
 
 static void draw(H2GApp *app)
@@ -683,6 +687,21 @@ static void draw(H2GApp *app)
             SDL_RenderFillRect(app->renderer,&dest);
         } else if (op->type==2 && op->texture) {
             SDL_RenderTexture(app->renderer,op->texture,NULL,&dest);
+        }
+    }
+    {
+        const char *screenshot = getenv("H2G_SCREENSHOT");
+        if (screenshot != NULL && *screenshot != '\0') {
+            SDL_Surface *pixels = SDL_RenderReadPixels(app->renderer, NULL);
+            if (pixels != NULL) {
+                if (!SDL_SaveBMP(pixels, screenshot))
+                    fprintf(stderr,"html2gui: screenshot save failed: %s\n",
+                            SDL_GetError());
+                SDL_DestroySurface(pixels);
+            } else {
+                fprintf(stderr,"html2gui: screen read failed: %s\n",
+                        SDL_GetError());
+            }
         }
     }
     SDL_RenderPresent(app->renderer);
@@ -807,6 +826,18 @@ int main(int argc, char **argv)
     if (!app.ops) { fprintf(stderr,"out of memory\n"); return 1; }
     rebuild(&app);
     draw(&app);
+    if (headless && getenv("H2G_TORTURE_VERIFY") != NULL) {
+        if (app.op_count < 1000 || app.document_h < 10000 ||
+            app.var_count < 100 || app.dark_backgrounds < 100 ||
+            app.overflow) {
+            fprintf(stderr,
+              "html2gui: TORTURE VERIFY FAIL ops=%d doc=%.0f vars=%d dark=%d overflow=%d\n",
+              app.op_count, app.document_h, app.var_count,
+              app.dark_backgrounds, app.overflow);
+            return 1;
+        }
+        fprintf(stderr,"html2gui: TORTURE VERIFY PASS\n");
+    }
     if (!headless) while (again && SDL_WaitEvent(&ev)) {
         if (ev.type==SDL_EVENT_QUIT) again=0;
         else if (ev.type==SDL_EVENT_WINDOW_RESIZED) {
