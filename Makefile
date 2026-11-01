@@ -30,8 +30,17 @@ $(BUILD)/h2g-parse: tools/h2g_parse.c $(BUILD)/libhtml2gui-parser.a
 $(BUILD)/parser-smoke: tests/parser_smoke.c $(BUILD)/libhtml2gui-parser.a
 	$(CC) $(CPPFLAGS) $(INCLUDES) $(CFLAGS) $(C89_WARN) $< $(BUILD)/libhtml2gui-parser.a $(LEXBOR_LIBS) -o $@
 
-$(BUILD)/h2g-render: src/h2g_sdl.c include/html2gui/parser.h $(BUILD)/libhtml2gui-parser.a
-	$(CC) $(CPPFLAGS) $(INCLUDES) $(SDL_CFLAGS) $(CFLAGS) $(C89_WARN) src/h2g_sdl.c $(BUILD)/libhtml2gui-parser.a $(LEXBOR_LIBS) $(SDL_LIBS) -lm -o $@
+$(BUILD)/h2g_sdl.o: src/h2g_sdl.c include/html2gui/parser.h include/html2gui/renderer.h | $(BUILD)
+	$(CC) $(CPPFLAGS) $(INCLUDES) $(SDL_CFLAGS) $(CFLAGS) $(C89_WARN) -c $< -o $@
+
+$(BUILD)/libhtml2gui-renderer.a: $(BUILD)/h2g_sdl.o
+	$(AR) rcs $@ $<
+
+$(BUILD)/h2g-render: tools/h2g_render.c $(BUILD)/libhtml2gui-renderer.a $(BUILD)/libhtml2gui-parser.a
+	$(CC) $(CPPFLAGS) $(INCLUDES) $(SDL_CFLAGS) $(CFLAGS) $(C89_WARN) $< $(BUILD)/libhtml2gui-renderer.a $(BUILD)/libhtml2gui-parser.a $(LEXBOR_LIBS) $(SDL_LIBS) -lm -o $@
+
+$(BUILD)/native-callback-smoke: tests/native_callback_smoke.c $(BUILD)/libhtml2gui-renderer.a $(BUILD)/libhtml2gui-parser.a
+	$(CC) $(CPPFLAGS) $(INCLUDES) $(SDL_CFLAGS) $(CFLAGS) $(C89_WARN) $< $(BUILD)/libhtml2gui-renderer.a $(BUILD)/libhtml2gui-parser.a $(LEXBOR_LIBS) $(SDL_LIBS) -lm -o $@
 
 render: $(BUILD)/h2g-render
 
@@ -40,6 +49,10 @@ test: $(BUILD)/parser-smoke
 
 renderer-test: render
 	./$(BUILD)/h2g-render --headless examples/basic.html examples/basic.css
+
+.PHONY: native-callback-test
+native-callback-test: $(BUILD)/native-callback-smoke
+	H2G_TEST_CLICK=hello ./$(BUILD)/native-callback-smoke
 
 .PHONY: torture-test
 torture-test: render
