@@ -439,54 +439,167 @@ static lxb_status_t h2g_append_css(const lxb_char_t *data,
     return LXB_STATUS_OK;
 }
 
+static int h2g_css_emit_declarations(const lxb_css_rule_declaration_list_t *list,
+    unsigned long specificity, unsigned long sequence,
+    unsigned long *index, H2GCssDeclarationFn callback, void *user)
+{
+    const lxb_css_rule_t *decl;
+    const lxb_css_rule_declaration_t *property;
+    H2GStringWriter writer;
+    lxb_status_t status;
+    char name[256], value[2048];
+
+    if (list == NULL) return 1;
+    for (decl = list->first; decl != NULL; decl = decl->next) {
+        if (decl->type != LXB_CSS_RULE_DECLARATION) continue;
+        property = lxb_css_rule_declaration(decl);
+        writer.data = name; writer.capacity = sizeof(name);
+        writer.used = 0; name[0] = '\0';
+        status = lxb_css_rule_declaration_serialize_name(
+             property, h2g_append_css, &writer);
+        if (status != LXB_STATUS_OK) continue;
+
+        writer.data = value; writer.capacity = sizeof(value);
+        writer.used = 0; value[0] = '\0';
+        status = lxb_css_property_serialize(property->u.user,
+                 property->type, h2g_append_css, &writer);
+        if (status != LXB_STATUS_OK) continue;
+
+        callback(name, value, specificity,
+                 property->important ? 1 : 0,
+                 sequence * 4096UL + (*index)++, user);
+    }
+    return 1;
+}
+
+/* Partial Media Queries 4 evaluator: simple viewport width features only.
+ * An unknown query is NOT treated as true. In particular, do not apply
+ * arbitrary @supports / color scheme / print rules unconditionally.
+ */
+static int h2g_css_width_media(const lexbor_str_t *prelude, float viewport)
+{
+    char expression[256], property[48], operator[4], unit[16];
+    const char *src, *end, *p;
+    double amount, target;
+    size_t length;
+    int opchars;
+    if (prelude == NULL || prelude->data == NULL || viewport <= 0)
+        return 0;
+    length = prelude->length;
+    if (length >= sizeof(expression)) return 0;
+    memcpy(expression, prelude->data, length);
+    expression[length] = '\0';
+    src = expression;
+    p = strchr(src, '(');
+    end = strchr(src, ')');
+    if (p == NULL || end == NULL || end <= p) return 0;
+    if (strchr(end + 1, '(') != NULL) return 0;
+    p++;
+    while (*p == ' ' || *p == '\t') p++;
+    memset(property, 0, sizeof(property));
+    memset(operator, 0, sizeof(operator));
+    memset(unit, 0, sizeof(unit));
+    if (sscanf(p, "%47[a-z-]", property) != 1) return 0;
+    p += strlen(property);
+    while (*p == ' ' || *p == '\t') p++;
+    if (strcmp(property, "min-width") == 0 ||
+        strcmp(property, "max-width") == 0) {
+        if (*p != ':') return 0;
+        p++;
+        while (*p == ' ' || *p == '\t') p++;
+        amount = strtod(p, (char **)&src);
+        if (src == p) return 0;
+        p = src;
+        if (strcmp(property, "min-width") == 0) strcpy(operator, ">=");
+        else strcpy(operator, "<=");
+    } else if (strcmp(property, "width") == 0) {
+        opchars = 0;
+        while ((*p == '>' || *p == '<' || *p == '=') && opchars < 3)
+            operator[opchars++] = *p++;
+        operator[opchars] = '\0';
+        if (opchars == 0) return 0;
+        while (*p == ' ' || *p == '\t') p++;
+        amount = strtod(p, (char **)&src);
+        if (src == p) return 0;
+        p = src;
+    } else {
+        return 0;
+    }
+    while (*p == ' ' || *p == '\t') p++;
+    opchars = 0;
+    while ((*p >= 'a' && *p <= 'z') && opchars < 15)
+        unit[opchars++] = *p++;
+    unit[opchars] = '\0';
+    while (*p == ' ' || *p == '\t') p++;
+    if (*p != ')') return 0;
+    if (strcmp(unit, "rem") == 0 || strcmp(unit, "em") == 0)
+        target = amount * 16.0;
+    else if (strcmp(unit, "px") == 0)
+        target = amount;
+    else return 0;
+
+    if (strcmp(operator, ">=") == 0) return viewport >= target;
+    if (strcmp(operator, "<=") == 0) return viewport <= target;
+    if (strcmp(operator, ">") == 0) return viewport > target;
+    if (strcmp(operator, "<") == 0) return viewport < target;
+    if (strcmp(operator, "=") == 0) return viewport == target;
+    return 0;
+}
+
+static void h2g_css_emit_nested(const lxb_css_rule_t *rule, int depth,
+    float viewport, unsigned long specificity, unsigned long sequence,
+    unsigned long *order, H2GCssDeclarationFn callback, void *user)
+{
+    const lxb_css_rule_at_t *at;
+    const lxb_css_at_rule__custom_t *custom;
+    if (depth >= 32 || viewport <= 0) return;
+    for (; rule != NULL; rule = rule->next) {
+        if (rule->type == LXB_CSS_RULE_DECLARATION_LIST) {
+            h2g_css_emit_declarations(lxb_css_rule_declaration_list(rule),
+                 specificity, sequence, order, callback, user);
+            continue;
+        }
+        if (rule->type != LXB_CSS_RULE_AT_RULE) continue;
+        at = lxb_css_rule_at(rule);
+        if (at->type != LXB_CSS_AT_RULE__CUSTOM) continue;
+        custom = at->u.custom;
+        if (custom == NULL || custom->block == NULL) continue;
+        if (custom->name.length == 5 &&
+            memcmp(custom->name.data, "media", 5) == 0 &&
+            h2g_css_width_media(&custom->prelude, viewport))
+            h2g_css_emit_nested(custom->block->first,depth + 1,viewport,
+                                 specificity,sequence,order,callback,user);
+    }
+}
+
 static int h2g_css_match_indexed(const H2GCssStylesheet *stylesheet,
-    const H2GIndexedRule *entry, const H2GDomNode *node,
+    const H2GIndexedRule *entry, const H2GDomNode *node, float viewport,
     H2GCssDeclarationFn callback, void *user)
 {
     const lxb_css_rule_style_t *style = entry->rule;
-    const lxb_css_rule_t *decl;
-    const lxb_css_rule_declaration_t *property;
     H2GMatchResult match;
-    H2GStringWriter writer;
     lxb_status_t status;
     unsigned long index = 0;
-    char name[256], value[2048];
 
-    if (style->selector == NULL || style->declarations == NULL)
-        return 1;
-    match.found = 0;
-    match.best = 0;
+    if (style->selector == NULL) return 1;
+    match.found = 0; match.best = 0;
     status = lxb_selectors_match_node(stylesheet->matcher,
                 (lxb_dom_node_t *)node, style->selector,
                 h2g_selector_hit, &match);
     if (status != LXB_STATUS_OK) return 0;
     if (!match.found) return 1;
 
-    for (decl = style->declarations->first;
-         decl != NULL; decl = decl->next) {
-        if (decl->type != LXB_CSS_RULE_DECLARATION) continue;
-        property = lxb_css_rule_declaration(decl);
-        writer.data = name; writer.capacity = sizeof(name);
-        writer.used = 0; name[0] = '\0';
-        status = lxb_css_rule_declaration_serialize_name(
-              property, h2g_append_css, &writer);
-        if (status != LXB_STATUS_OK) continue;
-        writer.data = value; writer.capacity = sizeof(value);
-        writer.used = 0; value[0] = '\0';
-        status = lxb_css_property_serialize(property->u.user,
-                  property->type, h2g_append_css, &writer);
-        if (status != LXB_STATUS_OK) continue;
-        callback(name, value, match.best, property->important ? 1 : 0,
-                 entry->sequence * 4096UL + index++, user);
-    }
+    h2g_css_emit_declarations(style->declarations, match.best,
+           entry->sequence, &index, callback, user);
+    if (style->child != NULL && style->child->first != NULL)
+        h2g_css_emit_nested(style->child->first,0,viewport,
+               match.best,entry->sequence,&index,callback,user);
     return 1;
 }
 
-/* Indexed selector matching is especially important for thousands of
- * Tailwind utility rules and 20,000+ repeated document nodes.
- */
-int h2g_css_visit_matching(const H2GCssStylesheet *stylesheet,
-      const H2GDomNode *node, H2GCssDeclarationFn callback, void *user)
+int h2g_css_visit_matching_at_width(const H2GCssStylesheet *stylesheet,
+      const H2GDomNode *node, float viewport_width,
+      H2GCssDeclarationFn callback, void *user)
 {
     const char *classes, *cursor, *end;
     size_t length;
@@ -502,8 +615,8 @@ int h2g_css_visit_matching(const H2GCssStylesheet *stylesheet,
     for (index = stylesheet->fallback; index >= 0;
          index = stylesheet->styles[index].next) {
         entry = &stylesheet->styles[index];
-        if (!h2g_css_match_indexed(stylesheet, entry, node,
-                                   callback, user)) return 0;
+        if (!h2g_css_match_indexed(stylesheet,entry,node,viewport_width,
+                                   callback,user)) return 0;
     }
 
     classes = h2g_dom_attribute(node, "class", &length);
@@ -527,11 +640,20 @@ int h2g_css_visit_matching(const H2GCssStylesheet *stylesheet,
             if (entry->anchor_length != (size_t)(cursor - begin) ||
                 memcmp(entry->anchor, begin,
                        entry->anchor_length) != 0) continue;
-            if (!h2g_css_match_indexed(stylesheet, entry, node,
-                                       callback, user)) return 0;
+            if (!h2g_css_match_indexed(stylesheet,entry,node,viewport_width,
+                                       callback,user)) return 0;
         }
     }
     return 1;
+}
+
+/* Compatibility entrypoint: without viewport geometry, avoid applying
+ * conditional media query declarations. */
+int h2g_css_visit_matching(const H2GCssStylesheet *stylesheet,
+      const H2GDomNode *node, H2GCssDeclarationFn callback, void *user)
+{
+    return h2g_css_visit_matching_at_width(stylesheet,node,0,
+                                            callback,user);
 }
 
 size_t h2g_css_indexed_style_rule_count(const H2GCssStylesheet *stylesheet)
