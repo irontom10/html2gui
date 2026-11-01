@@ -83,7 +83,7 @@ Input event example (for `<input id="name" type="text">`):
 static void on_input(const char *id, const char *value, void *user)
 {
     (void)user;
-    printf("input %s = %s\\n", id, value);
+    printf("input %s = %s\n", id, value);
 }
 /* Call h2g_renderer_run_ex(html, css, 0, on_button, on_input, user). */
 ```
@@ -91,7 +91,8 @@ static void on_input(const char *id, const char *value, void *user)
 Use SDL3's committed UTF-8 text events, not raw keycodes, for characters.
 The editor supports Backspace, Delete, arrows, Home/End, click-to-focus,
 Tab between text inputs, Enter/Escape to blur, and preserves edits on resize.
-Each field is limited to 4096 UTF-8 bytes; grapheme clusters, horizontal
+Only enabled, writable, text-like inputs are editable. Each field is limited
+to 4096 UTF-8 bytes; grapheme clusters, horizontal
 text scrolling, selection and IME preedit display remain future work.
 
 Link with `-lhtml2gui-renderer -lhtml2gui-parser` followed by Lexbor,
