@@ -453,7 +453,10 @@ static int editable_input(const H2GDomNode *node)
 {
     size_t length;
     const char *type;
-    if (!tag_is(node, "input")) return 0;
+    if (!tag_is(node, "input") ||
+        h2g_dom_attribute(node, "disabled", NULL) != NULL ||
+        h2g_dom_attribute(node, "readonly", NULL) != NULL)
+        return 0;
     type = h2g_dom_attribute(node, "type", &length);
     if (type == NULL || length == 0) return 1;
     return (length == 4 && memcmp(type, "text", 4) == 0) ||
