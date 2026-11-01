@@ -1,0 +1,42 @@
+name: renderer
+on:
+  push:
+    branches: [html2gui/standards-parser-bootstrap]
+  pull_request:
+
+jobs:
+  sdl-renderer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install libraries and build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config \
+            libfreetype-dev libharfbuzz-dev fonts-dejavu-core
+      - name: Build Lexbor
+        run: |
+          git clone --depth 1 https://github.com/lexbor/lexbor.git /tmp/lexbor
+          cmake -S /tmp/lexbor -B /tmp/lexbor-build \
+            -DLEXBOR_BUILD_TESTS=OFF
+          cmake --build /tmp/lexbor-build --parallel 4
+          sudo cmake --install /tmp/lexbor-build
+      - name: Build SDL3
+        run: |
+          git clone --depth 1 https://github.com/libsdl-org/SDL.git /tmp/sdl3
+          cmake -S /tmp/sdl3 -B /tmp/sdl3-build \
+            -DSDL_TESTS=OFF -DSDL_STATIC=OFF -DSDL_SHARED=ON
+          cmake --build /tmp/sdl3-build --parallel 4
+          sudo cmake --install /tmp/sdl3-build
+      - name: Build SDL3_ttf
+        run: |
+          git clone --depth 1 https://github.com/libsdl-org/SDL_ttf.git /tmp/sdl3-ttf
+          cmake -S /tmp/sdl3-ttf -B /tmp/sdl3-ttf-build \
+            -DSDLTTF_VENDORED=OFF -DSDLTTF_SAMPLES=OFF -DSDLTTF_INSTALL=ON
+          cmake --build /tmp/sdl3-ttf-build --parallel 4
+          sudo cmake --install /tmp/sdl3-ttf-build
+          sudo ldconfig
+      - name: Compile C89 renderer and run without a display
+        run: |
+          pkg-config --modversion sdl3 sdl3-ttf
+          make clean all test render renderer-test
