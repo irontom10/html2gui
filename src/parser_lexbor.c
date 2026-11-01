@@ -400,6 +400,13 @@ const char *h2g_dom_text_content(const H2GDomNode *node, size_t *length)
         (lxb_dom_node_t *)node, length);
 }
 
+void h2g_dom_text_content_free(const H2GDomNode *node, const char *text)
+{
+    const lxb_dom_node_t *n = (const lxb_dom_node_t *)node;
+    if (n == NULL || text == NULL) return;
+    lxb_dom_document_destroy_text(n->owner_document, (lxb_char_t *)text);
+}
+
 typedef struct H2GMatchResult {
     unsigned long best;
     int found;
