@@ -46,6 +46,9 @@ typedef struct H2GInput {
     const H2GDomNode *node;
     char id[96];
     H2GTextInput editor;
+    size_t view_start, view_end;
+    float text_x;
+    int font_size, font_bold;
 } H2GInput;
 
 typedef struct H2GFont {
@@ -451,6 +454,18 @@ static H2GStyle style_for(H2GApp *app, const H2GDomNode *node,
 /* This first editor supports text-like single-line controls only.
  * Checkboxes, radios, file pickers and password fields need specialized UI.
  */
+static int h2g_input_type_is(const char *type, size_t length,
+                             const char *expected)
+{
+    size_t i;
+    if (type == NULL || length != strlen(expected)) return 0;
+    for (i=0;i<length;i++)
+        if (tolower((unsigned char)type[i]) !=
+            (unsigned char)expected[i])
+            return 0;
+    return 1;
+}
+
 static int editable_input(const H2GDomNode *node)
 {
     size_t length;
@@ -461,11 +476,11 @@ static int editable_input(const H2GDomNode *node)
         return 0;
     type = h2g_dom_attribute(node, "type", &length);
     if (type == NULL || length == 0) return 1;
-    return (length == 4 && memcmp(type, "text", 4) == 0) ||
-           (length == 6 && memcmp(type, "search", 6) == 0) ||
-           (length == 5 && memcmp(type, "email", 5) == 0) ||
-           (length == 3 && memcmp(type, "tel", 3) == 0) ||
-           (length == 3 && memcmp(type, "url", 3) == 0);
+    return h2g_input_type_is(type,length,"text") ||
+           h2g_input_type_is(type,length,"search") ||
+           h2g_input_type_is(type,length,"email") ||
+           h2g_input_type_is(type,length,"tel") ||
+           h2g_input_type_is(type,length,"url");
 }
 
 static H2GInput *get_input(H2GApp *app, const H2GDomNode *node)
@@ -633,6 +648,119 @@ static float layout_text(H2GApp *app, const char *src, size_t length,
     return total;
 }
 
+/* UTF-8 codepoint navigation over the already validated input buffer. */
+static size_t h2g_input_next(const char *text, size_t length, size_t pos)
+{
+    if (pos >= length) return length;
+    pos++;
+    while (pos < length &&
+           (((unsigned char)text[pos] & 0xc0) == 0x80))
+        pos++;
+    return pos;
+}
+
+static size_t h2g_input_prev(const char *text, size_t pos)
+{
+    if (pos == 0) return 0;
+    pos--;
+    while (pos > 0 &&
+           (((unsigned char)text[pos] & 0xc0) == 0x80))
+        pos--;
+    return pos;
+}
+
+static int h2g_input_width(TTF_Font *font, const char *data, size_t length)
+{
+    int width=0, height=0;
+    if (font == NULL || length == 0) return 0;
+    if (!TTF_GetStringSize(font,data,length,&width,&height)) return 0;
+    return width;
+}
+
+/* Paint a bounded substring instead of creating enormous SDL textures for
+ * long input values. Keep the cursor in view when a field is focused.
+ */
+static float layout_editable_input(H2GApp *app, const H2GDomNode *node,
+                                   H2GInput *input, float x, float y,
+                                   float available, const H2GStyle *style)
+{
+    const char *value=input->editor.text;
+    size_t length=input->editor.length;
+    size_t cursor=input->editor.cursor;
+    size_t start=input->view_start, end, previous, next, visible_length;
+    const char *placeholder;
+    size_t placeholder_length;
+    char visible[H2G_TEXT_INPUT_MAX_BYTES + 1];
+    TTF_Font *font=get_font(app,style->size,style->bold);
+    H2GOp *caret;
+    int room, caret_width=0;
+    float used=0;
+
+    input->text_x=x;
+    input->font_size=style->size;
+    input->font_bold=style->bold;
+    room=(int)(available - 4.0f);
+    if (room < 8) room=8;
+    if (app->focused_input != input)
+        start=0;
+    else if (start > cursor)
+        start=cursor;
+    if (app->focused_input == input && font != NULL &&
+        h2g_input_width(font,value+start,cursor-start)>room) {
+        start=cursor;
+        while (start > 0) {
+            previous=h2g_input_prev(value,start);
+            if (h2g_input_width(font,value+previous,
+                                cursor-previous)>room)
+                break;
+            start=previous;
+        }
+    }
+    end=start;
+    while (end < length) {
+        next=h2g_input_next(value,length,end);
+        if (font != NULL &&
+            h2g_input_width(font,value+start,next-start)>room)
+            break;
+        end=next;
+    }
+    if (end==start && start<length)
+        end=h2g_input_next(value,length,start);
+    input->view_start=start;
+    input->view_end=end;
+    visible_length=end-start;
+    if (visible_length > 0) {
+        memcpy(visible,value+start,visible_length);
+        visible[visible_length]='\0';
+        used=add_line(app,visible,x,y,style);
+    } else {
+        H2GStyle dim=*style;
+        dim.fg=color(125,138,157,255);
+        placeholder=h2g_dom_attribute(node,"placeholder",
+                                       &placeholder_length);
+        if (placeholder != NULL)
+            used=layout_text(app,placeholder,placeholder_length,x,y,
+                             available,&dim);
+    }
+
+    if (app->focused_input == input) {
+        if (cursor < start) cursor=start;
+        if (cursor > end) cursor=end;
+        caret_width=h2g_input_width(font,value+start,cursor-start);
+        if (caret_width>room) caret_width=room;
+        caret=add_op(app,1);
+        if (caret != NULL) {
+            caret->rect.x=x+(float)caret_width;
+            caret->rect.y=y+2;
+            caret->rect.w=2;
+            caret->rect.h=(float)style->size+2;
+            caret->color=color(37,99,235,255);
+        }
+    }
+    if (used<=0) used=(float)(style->size+5);
+    return used;
+}
+
 static int is_text_container(const H2GDomNode *node)
 {
     return tag_is(node,"p") || tag_is(node,"h1") || tag_is(node,"h2") ||
@@ -714,36 +842,22 @@ static float layout_node(H2GApp *app, const H2GDomNode *node,
         if (editable_input(node))
             input=get_input(app,node);
         if (input != NULL) {
-            if (input->editor.length > 0) {
-                used=add_line(app,input->editor.text,outer_x+s.padding,
-                              inner_y,&s);
-            } else {
-                H2GStyle placeholder=s;
-                placeholder.fg=color(125,138,157,255);
-                text=h2g_dom_attribute(node,"placeholder",&len);
-                if (text != NULL)
-                    used=layout_text(app,text,len,outer_x+s.padding,
-                                     inner_y,inner_w,&placeholder);
-            }
-            if (app->focused_input == input) {
-                TTF_Font *font=get_font(app,s.size,s.bold);
-                int width=0, height=0;
-                H2GOp *caret;
-                if (font != NULL && input->editor.cursor > 0)
-                    (void)TTF_GetStringSize(font,input->editor.text,
-                           input->editor.cursor,&width,&height);
-                caret=add_op(app,1);
-                if (caret != NULL) {
-                    caret->rect.x=outer_x+s.padding+(float)width;
-                    caret->rect.y=inner_y+2;
-                    caret->rect.w=2;
-                    caret->rect.h=(float)s.size+2;
-                    caret->color=color(37,99,235,255);
-                }
-            }
+            used=layout_editable_input(app,node,input,
+                                       outer_x+s.padding,inner_y,
+                                       inner_w,&s);
         } else {
+            /* Unsupported password controls must never paint the raw
+             * value attribute. They are not editable in this slice.
+             */
+            const char *type;
+            size_t type_length=0;
+            int password=0;
+            type=h2g_dom_attribute(node,"type",&type_length);
+            if (h2g_input_type_is(type,type_length,"password"))
+                password=1;
             text=h2g_dom_attribute(node,"placeholder",&len);
-            if (!text) text=h2g_dom_attribute(node,"value",&len);
+            if (text == NULL && !password)
+                text=h2g_dom_attribute(node,"value",&len);
             if (text) used=layout_text(app,text,len,outer_x+s.padding,
                                        inner_y,inner_w,&s);
         }
@@ -950,6 +1064,28 @@ static int focus_next_input(H2GApp *app, int backwards)
     return focus_input(app,&app->inputs[i]);
 }
 
+/* Put the insertion caret at the nearest visible UTF-8 boundary. */
+static size_t h2g_input_position_at_x(H2GApp *app, H2GInput *input,
+                                      float x)
+{
+    TTF_Font *font;
+    const char *text=input->editor.text;
+    size_t start=input->view_start, position=start, next;
+    float relative=x-input->text_x;
+    int previous_width=0, next_width;
+    if (relative<=0) return start;
+    font=get_font(app,input->font_size,input->font_bold);
+    while (position<input->view_end) {
+        next=h2g_input_next(text,input->editor.length,position);
+        next_width=h2g_input_width(font,text+start,next-start);
+        if (relative < ((float)previous_width+(float)next_width)*0.5f)
+            return position;
+        position=next;
+        previous_width=next_width;
+    }
+    return input->view_end;
+}
+
 static int click(H2GApp *app, float x, float y)
 {
     int i;
@@ -962,8 +1098,10 @@ static int click(H2GApp *app, float x, float y)
             y>=op->rect.y && y<op->rect.y+op->rect.h) {
             if (op->type==4) {
                 if (op->input != NULL)
-                    h2g_text_input_end(&op->input->editor);
-                return focus_input(app,op->input);
+                    op->input->editor.cursor=
+                        h2g_input_position_at_x(app,op->input,x);
+                (void)focus_input(app,op->input);
+                return 1;
             }
             (void)focus_input(app,NULL);
             if (app->on_button != NULL) {
@@ -1127,6 +1265,56 @@ int h2g_renderer_run_ex(const char *html_path, const char *css_path,
         }
         fprintf(stderr,"html2gui: TORTURE VERIFY PASS\n");
     }
+    if (headless && getenv("H2G_TEST_INPUT_VIEW") != NULL) {
+        int verified=0;
+        for (i=0;i<app.op_count;i++) {
+            H2GOp *op=&app.ops[i];
+            if (op->type==4 && op->input != NULL &&
+                strcmp(op->input->id,"long")==0) {
+                H2GInput *input=op->input;
+                size_t old_start;
+                TTF_Font *font=get_font(&app,input->font_size,
+                                        input->font_bold);
+                int width=h2g_input_width(font,
+                         input->editor.text+input->view_start,
+                         input->view_end-input->view_start);
+                int room=(int)(op->rect.x+op->rect.w-input->text_x-4);
+                if (input->view_start!=0 || input->view_end==0 ||
+                    input->view_end>=input->editor.length ||
+                    width>room) {
+                    fprintf(stderr,"html2gui: INPUT VIEWPORT VERIFY FAIL\n");
+                    return 1;
+                }
+                /* Focusing the long field must show its trailing text.
+                 * Moving one codepoint left of the viewport must shift the
+                 * viewport locally, not jump all the way to byte zero.
+                 */
+                (void)focus_input(&app,input);
+                rebuild(&app);
+                old_start=input->view_start;
+                if (old_start<=1) {
+                    fprintf(stderr,"html2gui: INPUT SCROLL INIT FAIL\n");
+                    return 1;
+                }
+                input->editor.cursor=h2g_input_prev(input->editor.text,
+                                                     old_start);
+                rebuild(&app);
+                if (input->view_start!=input->editor.cursor ||
+                    input->view_start==0) {
+                    fprintf(stderr,"html2gui: INPUT SCROLL LEFT FAIL\n");
+                    return 1;
+                }
+                verified=1;
+                break;
+            }
+        }
+        if (!verified) {
+            fprintf(stderr,"html2gui: INPUT VIEWPORT NOT FOUND\n");
+            return 1;
+        }
+        fprintf(stderr,"html2gui: INPUT VIEWPORT VERIFY PASS\n");
+    }
+
     /* Opt-in synthetic hit-test for the CI callback smoke test only.
      * Never inject clicks in a normal interactive application.
      */
@@ -1151,7 +1339,11 @@ int h2g_renderer_run_ex(const char *html_path, const char *css_path,
             H2GOp *op=&app.ops[i];
             if (op->type==4 && op->input != NULL &&
                 strcmp(op->input->id,target)==0) {
-                (void)click(&app,op->rect.x+op->rect.w*0.5f,
+                const char *where=getenv("H2G_TEST_INPUT_X");
+                double fraction=where!=NULL ? strtod(where,NULL) : 0.5;
+                if (fraction < 0.01) fraction=0.01;
+                if (fraction > 0.99) fraction=0.99;
+                (void)click(&app,op->rect.x+op->rect.w*(float)fraction,
                             op->rect.y+op->rect.h*0.5f-app.scroll);
                 if (text != NULL) (void)handle_text_insert(&app,text);
                 rebuild(&app);

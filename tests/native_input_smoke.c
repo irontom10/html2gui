@@ -1,6 +1,7 @@
 #include "html2gui/renderer.h"
 #include <SDL3/SDL_main.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 typedef struct TestState {
@@ -12,8 +13,12 @@ static void input_changed(const char *id, const char *value, void *user)
 {
     TestState *state = (TestState *)user;
     state->callback_count++;
-    if (strcmp(id, "name") == 0 && strcmp(value, "seedabc") == 0)
-        state->correct_value=1;
+    if (strcmp(id, "name") == 0) {
+        const char *left=getenv("H2G_TEST_INPUT_X");
+        const char *expected=left != NULL ? "abcseed" : "seedabc";
+        if (strcmp(value,expected) == 0)
+            state->correct_value=1;
+    }
 }
 
 int main(void)

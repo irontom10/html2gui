@@ -89,17 +89,21 @@ static void on_input(const char *id, const char *value, void *user)
 ```
 
 Use SDL3's committed UTF-8 text events, not raw keycodes, for characters.
-The editor supports Backspace, Delete, arrows, Home/End, click-to-focus,
-Tab between text inputs, Enter/Escape to blur, and preserves edits on resize.
+The editor supports Backspace, Delete, arrows, Home/End, click-to-position
+the caret, Tab between text inputs, Enter/Escape to blur, and preserves edits
+on resize. Long values paint only a viewport-sized UTF-8 substring; moving
+the caret horizontally reveals the rest instead of drawing outside the box.
 Only enabled, writable, text-like inputs are editable. Each field is limited
-to 4096 UTF-8 bytes; grapheme clusters, horizontal
-text scrolling, selection and IME preedit display remain future work.
+to 4096 UTF-8 bytes; grapheme clusters, smooth pixel-based horizontal
+scrolling, selection and IME preedit display remain future work.
+Unsupported password controls never render their raw `value` attribute.
 
 Link with `-lhtml2gui-renderer -lhtml2gui-parser` followed by Lexbor,
 SDL3, SDL3_ttf and `-lm`. A complete two-button program is in
 `examples/native_callbacks.c`; build and launch it with `make native-example`
-then `./build/native-example`. Use `make native-callback-test`
-and `make native-input-test` for headless native event regression tests.
+then `./build/native-example`. Use `make native-callback-test`, `make native-input-test` and
+`make native-input-click-test` and `make native-input-viewport-test` for
+headless input-event and visible-geometry regression tests.
 The pure C89 UTF-8 buffer also runs under `make test`.
 
 The only C99
