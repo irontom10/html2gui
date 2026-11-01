@@ -44,3 +44,4 @@ jobs:
         run: |
           pkg-config --modversion sdl3 sdl3-ttf
           make clean all test render renderer-test
+          make torture-test
