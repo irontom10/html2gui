@@ -2,17 +2,17 @@ CC ?= cc
 AR ?= ar
 CFLAGS ?= -O2
 CPPFLAGS ?=
-# Public consumer programs compile in strict C89.
-# The isolated Lexbor bridge must be compiled C99 because its headers use
-# the C99 inline keyword. Bridge source itself uses only C89 syntax.
 C89_WARN = -std=c89 -pedantic -Wall -Wextra -Werror
+# Lexbor headers require C99; all public and SDL renderer code is C89.
 BRIDGE_WARN = -std=c99 -Wall -Wextra -Werror
 LEXBOR_CFLAGS ?= $(shell pkg-config --cflags lexbor 2>/dev/null)
 LEXBOR_LIBS ?= $(shell pkg-config --libs lexbor 2>/dev/null || echo -llexbor)
+SDL_CFLAGS ?= $(shell pkg-config --cflags sdl3 sdl3-ttf 2>/dev/null)
+SDL_LIBS ?= $(shell pkg-config --libs sdl3 sdl3-ttf 2>/dev/null)
 INCLUDES = -Iinclude $(LEXBOR_CFLAGS)
 BUILD = build
 
-.PHONY: all test clean
+.PHONY: all render test renderer-test clean
 all: $(BUILD)/libhtml2gui-parser.a $(BUILD)/h2g-parse
 
 $(BUILD):
@@ -30,8 +30,16 @@ $(BUILD)/h2g-parse: tools/h2g_parse.c $(BUILD)/libhtml2gui-parser.a
 $(BUILD)/parser-smoke: tests/parser_smoke.c $(BUILD)/libhtml2gui-parser.a
 	$(CC) $(CPPFLAGS) $(INCLUDES) $(CFLAGS) $(C89_WARN) $< $(BUILD)/libhtml2gui-parser.a $(LEXBOR_LIBS) -o $@
 
+$(BUILD)/h2g-render: src/h2g_sdl.c include/html2gui/parser.h $(BUILD)/libhtml2gui-parser.a
+	$(CC) $(CPPFLAGS) $(INCLUDES) $(SDL_CFLAGS) $(CFLAGS) $(C89_WARN) src/h2g_sdl.c $(BUILD)/libhtml2gui-parser.a $(LEXBOR_LIBS) $(SDL_LIBS) -o $@
+
+render: $(BUILD)/h2g-render
+
 test: $(BUILD)/parser-smoke
 	./$(BUILD)/parser-smoke
+
+renderer-test: render
+	./$(BUILD)/h2g-render --headless examples/hello.html examples/hello.css
 
 clean:
 	rm -rf $(BUILD)
