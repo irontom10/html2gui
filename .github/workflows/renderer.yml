@@ -1,7 +1,7 @@
 name: renderer
 on:
   push:
-    branches: [html2gui/standards-parser-bootstrap]
+    branches: [main, html2gui/standards-parser-bootstrap]
   pull_request:
 
 jobs:
